@@ -11,10 +11,10 @@ https://www.tooplate.com/view/2134-gotto-job
 -----------------------------------------*/
 :root {
   --white-color: #ffffff;
-  --primary-color: #5d52ba;
-  --secondary-color: #0dcaf0;
+  --primary-color: #307d73;
+  --secondary-color: #80cdc3;
   --section-bg-color: #f0f8ff;
-  --custom-btn-bg-color: #56bee7;
+  --custom-btn-bg-color: #62afa5;
   /* --social-icon-link-bg-color:    #7f73eb; */
   --dark-color: #000000;
   --p-color: #717275;
@@ -452,7 +452,8 @@ nav[aria-label="breadcrumb"] {
 }
 
 .logo-text {
-  color: var(--primary-color);
+  /* color: var(--primary-color); */
+  color: black;
   font-size: var(--h4-font-size);
   display: block;
   line-height: normal;
@@ -937,6 +938,7 @@ nav[aria-label="breadcrumb"] {
   position: relative;
   overflow: hidden;
   margin-bottom: 24px;
+  padding: 20px;
 }
 
 .reviews-body {
@@ -1620,7 +1622,7 @@ li {
   background: #f5f5f5;
   cursor: pointer;
   padding: 15px 20px;
-  font-weight: bold;
+  /* font-weight: bold; */
   position: relative;
 }
 
