@@ -21,7 +21,39 @@
         align-items: center;
         padding: 20px;
         min-height: 100vh;
+        flex-direction: column; 
     } 
+
+    .logo-top-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px; 
+}
+
+.logo-image {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    margin-right: 15px; 
+}
+
+.logo-text {
+    font-size: 24px;
+    font-weight: bold;
+    color: black;
+    margin-bottom: 5px; 
+}
+
+.logo-slogan {
+    color: rgb(21, 21, 21);
+    font-size: 14px; 
+}
+
+.logo-text-container {
+    display: flex;
+    flex-direction: column;
+}
      .form-container {
         background: var(--white-color);
         padding: 20px;
@@ -165,122 +197,152 @@
         text-decoration: underline;
         cursor: pointer;
       } 
+
+      .terms-text {
+    margin-top: 1rem; 
+    font-size: 0.8rem; 
+    color: #666; 
+    text-align: center;
+}
+
+.terms-text a {
+    color: var(--primary-color); 
+    text-decoration: none; 
+}
+
+.terms-text a:hover {
+    text-decoration: underline; 
+}
       
-      </style>
+</style>
 </head>
 <body>
-
-<div class="form-container">
-    <h2>Register</h2>
-
-    <!-- Role Selection -->
-    <div class="role-select">
-       <button type="button" name="role" id="employeeBtn" class="active">Employee</button>
-       <button type="button" name="role" id="employerBtn">Employer</button>
+    
+    <div class="logo-top-container">
+        <img src="images/logo.png" class="logo-image">
+        <div>
+            <div class="logo-text">Nexsphere Global</div>
+            <small class="logo-slogan">Virtual HR</small>
+        </div>
     </div>
 
+    <div class="form-container">
+        <h2>Register</h2>
 
-    <!-- Employee Form -->
-    <form id="employeeForm">
-        <label>Name</label>
-        <input type="text" placeholder="Joe" required>
-
-        <label>Contact No</label>
-        <input type="tel" placeholder="+91XXXXXXXXXX" required>
-
-        <label>Alternate No</label>
-        <input type="tel" placeholder="+91XXXXXXXXXX">
-
-        <label>Email</label>
-        <input type="email" placeholder="example@gmail.com" required>
-
-        <label>Joining Company</label>
-        <input type="text"placeholder="Company Name" required>
-
-        <label>Joining Date</label>
-        <input  type="date" placeholder="DD/MM/YYYY" required>
-
-        <label>Position</label>
-        <input type="text" placeholder="Position" required>
-
-        <!-- <label>Password</label>
-        <input type="password" required> -->
-
-        <div class="consent-line">
-            <input type="checkbox" required>
-            I agree to the <a onclick="openModal()">Consent Letter</a>
+        <!-- Role Selection -->
+        <div class="role-select">
+           <button type="button" name="role" id="employeeBtn" class="active">Employee</button>
+           <button type="button" name="role" id="employerBtn">Employer</button>
         </div>
 
-        <button type="submit">Register Employee</button>
-    </form>
+        <!-- Employee Form -->
+        <form id="employeeForm">
+            <label>Name</label>
+            <input type="text" placeholder="Joe" required>
 
-    <!-- Employer Form -->
-    <form id="employerForm" style="display:none;">
-        <label>Company Name</label>
-        <input type="text"placeholder="ABC pvt Lmt" required>
+            <label>Contact No</label>
+            <input type="tel" placeholder="+91XXXXXXXXXX" required>
 
-        <label>Location of Company</label>
-        <input type="text" placeholder="City, State" required>
+            <label>Alternate No</label>
+            <input type="tel" placeholder="+91XXXXXXXXXX">
 
-        <label>Business Email</label>
-        <input type="email" placeholder="example@gmail.com" required>
+            <label>Email</label>
+            <input type="email" placeholder="example@gmail.com" required>
 
-        <label>Business Number</label>
-        <input type="tel" placeholder="+91XXXXXXXXXX" required>
+            <label>Joining Company</label>
+            <input type="text"placeholder="Company Name" required>
 
-        <label>Position Name</label>
-        <input type="text" placeholder="Position" required>
+            <label>Joining Date</label>
+            <input  type="date" placeholder="DD/MM/YYYY" required>
 
-        <label>Company Size</label>
-        <input type="number"placeholder="Number of employees" required>
+            <label>Position</label>
+            <input type="text" placeholder="Position" required>
 
-        <div class="price">Employer Registration Fee: ₹999</div>
+            <!-- <label>Password</label>
+            <input type="password" required> -->
 
-        <!-- <label>Password</label>
-        <input type="password" required> -->
+            <div class="consent-line">
+                <input type="checkbox" required>
+                I agree to the <a onclick="openModal()">Consent Letter</a>
+            </div>
 
-        <button type="submit">Register & Pay</button>
-    </form>
-</div>
+            <button type="submit">Register Employee</button>
+            <p class="terms-text">By registering, you agree to our <a href="employee.html">Terms & Conditions</a> and 
+                <a href="privacyandpolicy.html">Privacy Policy</a>.</p>
+        </form>
 
-<!-- Consent Modal -->
-<div id="consentModal" class="modal">
-    <div class="modal-content">
-        <span class="close" onclick="closeModal()">&times;</span>
-        <h3>Candidate Consent Letter</h3>
-        <p> I, the undersigned, hereby give my consent to be represented by [Your Company Name, e.g., 
-            Nexsphere Virtual HR Services] for job placement opportunities. I understand that by engaging with 
-           the recruitment process through the company, I am bound by the following terms and conditions 
-           outlined below.</p>
+        <!-- Employer Form -->
+        <form id="employerForm" style="display:none;">
+            <label>Name</label>
+            <input type="text" placeholder="Joe" required>
+            
+            <label>Company Name</label>
+            <input type="text"placeholder="ABC pvt Lmt" required>
 
-          <strong>6 Month Restriction Policy: </strong> 
-           If I am not selected by the company where I was interviewed, I agree that I will not directly join or 
-           apply to the same company for a period of six (6) months from the date of the interview. <br>
+            <label>Location of Company</label>
+            <input type="text" placeholder="City, State" required>
 
-            <strong>Non-Joining Fee: </strong>
-            I understand and accept that a non-joining fee of ₹1,999 is applicable if I choose not to join the 
-            company after receiving an offer letter without a valid reason. <br>
+            <label>Business Email</label>
+            <input type="email" placeholder="example@gmail.com" required>
 
-            <strong>Recruitment Process Compliance: </strong>
-            I agree not to bypass the recruitment process. I will not directly contact or join the company without 
-            going through the proper procedure defined by [Your Company Name]. <br>
+            <label>Business Number</label>
+            <input type="tel" placeholder="+91XXXXXXXXXX" required>
 
-            <strong> Confidentiality & Integrity:</strong> 
-            I agree to maintain the confidentiality of all job-related information shared with me. I will not misuse 
-            or disclose any details of the hiring process or job offers to third parties. <br>
+            <label>Designation</label>
+            <input type="text" placeholder="Designation" required>
 
-            <strong>False Information Clause:</strong>
-             I confirm that all information provided by me during the hiring process is true and accurate. I 
-              understand that providing false information may lead to disqualification or legal action.  
- 
-      
+            <label>Company Size</label>
+            <input type="number"placeholder="Number of employees" required>
+
+            <div class="price">Employer Registration Fee: ₹999</div>
+
+            <!-- <label>Password</label>
+            <input type="password" required> -->
+
+            <button type="submit">Register & Pay</button>
+             <p class="terms-text">By registering, you agree to our <a href="employer.html">Terms & Conditions</a> and 
+                <a href="privacyandpolicy.html">Privacy Policy</a>.</p>
+        </form>
     </div>
-</div>
- <!-- JAVASCRIPT FILES -->
-    <script src="js/jquery.min.js"></script>
-    <script src="js/bootstrap.min.js"></script>
-    <script src="js/owl.carousel.min.js"></script>
-    <script src="js/counter.js"></script>
-    <script src="js/custom.js"></script>
+
+    <!-- Consent Modal -->
+    <div id="consentModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h3>Candidate Consent Letter</h3>
+            <p> I, the undersigned, hereby give my consent to be represented by [Your Company Name, e.g., 
+                Nexsphere Virtual HR Services] for job placement opportunities. I understand that by engaging with 
+               the recruitment process through the company, I am bound by the following terms and conditions 
+               outlined below.</p>
+
+              <strong>6 Month Restriction Policy: </strong> 
+               If I am not selected by the company where I was interviewed, I agree that I will not directly join or 
+               apply to the same company for a period of six (6) months from the date of the interview. <br>
+
+                <strong>Non-Joining Fee: </strong>
+                I understand and accept that a non-joining fee of ₹1,999 is applicable if I choose not to join the 
+                company after receiving an offer letter without a valid reason. <br>
+
+                <strong>Recruitment Process Compliance: </strong>
+                I agree not to bypass the recruitment process. I will not directly contact or join the company without 
+                going through the proper procedure defined by [Your Company Name]. <br>
+
+                <strong> Confidentiality & Integrity:</strong> 
+                I agree to maintain the confidentiality of all job-related information shared with me. I will not misuse 
+                or disclose any details of the hiring process or job offers to third parties. <br>
+
+                <strong>False Information Clause:</strong>
+                 I confirm that all information provided by me during the hiring process is true and accurate. I 
+                  understand that providing false information may lead to disqualification or legal action.  
+     
+          
+        </div>
+    </div>
+     <!-- JAVASCRIPT FILES -->
+        <script src="js/jquery.min.js"></script>
+        <script src="js/bootstrap.min.js"></script>
+        <script src="js/owl.carousel.min.js"></script>
+        <script src="js/counter.js"></script>
+        <script src="js/custom.js"></script>
 </body>
 </html>
