@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Register</title>
+<title>Register - Nexsphere Global</title>
 
 <style>
     :root {
@@ -26,34 +26,47 @@
 
     .logo-top-container {
     display: flex;
-    align-items: center;
+    align-items: center;   /* logo and text stay aligned */
     justify-content: center;
-    margin-bottom: 20px; 
+    margin-bottom: 20px;
 }
 
 .logo-image {
-    width: 70px;
-    height: 70px;
-    border-radius: 50%;
-    margin-right: 15px; 
+        width: 70px;
+        height: 70px;
+        border-radius: 50%;
+        margin-right: 15px; 
+        background: var(--white-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        color: var(--primary-color);
+        font-weight: bold;
+    }
+
+.logo-text-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start; /* left-align text with each other */
+    justify-content: center;
 }
 
 .logo-text {
     font-size: 24px;
     font-weight: bold;
     color: black;
-    margin-bottom: 5px; 
+    line-height: 1.2;
 }
 
 .logo-slogan {
-    color: rgb(21, 21, 21);
-    font-size: 14px; 
+    font-size: 14px;
+    color: rgb(39, 37, 37);
+    opacity: 0.9;
+    margin-top: 2px;
+    margin-left: 2px; /* slight indent so it looks aligned with title */
 }
 
-.logo-text-container {
-    display: flex;
-    flex-direction: column;
-}
      .form-container {
         background: var(--white-color);
         padding: 20px;
@@ -61,15 +74,15 @@
         box-shadow: 0 4px 12px rgba(6, 55, 41, 0.1);
         width: 100%;
         max-width: 500px;
-        display: border-box;
+        box-sizing: border-box;
     }
     h2 {
         text-align: center;
         background-color: var(--primary-color);
-        color: var(--section-bg-color);
+        color: var(--white-color);
         border-radius: 20px;
-        width: 50%;
-        padding: 5px;
+        width: 60%;
+        padding: 10px;
         margin: 0 auto 20px;
         font-size: 24px;
         font-weight: bold;
@@ -81,82 +94,91 @@
         font-size: 14px;
     }
     input, select {
-        width: 95%;
-        padding: 8px;
+        width: 100%;
+        padding: 10px;
         margin-top: 4px;
         border-radius: 10px;
         border: 1px solid #ccc;
         font-size: 14px;
-        
+        box-sizing: border-box;
     }
 
     input:focus,
     select:focus {
-    border: 1px solid var(--primary-color);
-    outline: none; 
+        border: 1px solid var(--primary-color);
+        outline: none; 
     }
 
     button {
         background: var(--primary-color);
         color: white;
         border: none;
-        padding: 10px;
+        padding: 12px;
         width: 100%;
         border-radius: 5px;
         cursor: pointer;
         margin-top: 10px;
         font-size: 15px;
+        transition: background 0.3s ease;
     }
     button:hover {
         background: var(--custom-btn-bg-color);
     }
+    
+    button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+    }
+    
     .price {
         background: #ffeb3b;
-        padding: 6px;
+        padding: 10px;
         border-radius: 5px;
         margin-top: 8px;
         font-weight: bold;
         text-align: center;
+        font-size: 16px;
     }
 
     .role-select {
-    display: flex;
-    justify-content: space-around;
-    margin-bottom: 15px;
+        display: flex;
+        justify-content: space-around;
+        margin-bottom: 15px;
+        gap: 10px;
     }
 
- .role-select button {
-    flex: 1;
-    max-width: 150px;
-    padding: 10px;
-    border: none;
-    background: var(--primary-color);
-    color: white;
-    cursor: pointer;
-    font-size: 16px;
-    border-radius: 8px;
-    transition: background 0.3s ease, transform 0.2s ease;
-    margin: 0 5px;
- }
+    .role-select button {
+        flex: 1;
+        max-width: 150px;
+        padding: 12px;
+        border: none;
+        background: var(--primary-color);
+        color: white;
+        cursor: pointer;
+        font-size: 16px;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
 
- .role-select button.active {
-    background: var(--secondary-color);
-    font-weight: bold;
-    transform: scale(1.05);
- }
+    .role-select button.active {
+        background: var(--secondary-color);
+        font-weight: bold;
+        transform: scale(1.05);
+    }
 
- .role-select button:hover {
-    background: var(--custom-btn-bg-color);
-  }
-
+    .role-select button:hover {
+        background: var(--custom-btn-bg-color);
+    }
 
     /* Modal styles */
-     .modal {
+    .modal {
         display: none;
         position: fixed;
         z-index: 1000;
-        left: 0; top: 0;
-        width: 100%; height: 100%;
+        left: 0; 
+        top: 0;
+        width: 100%; 
+        height: 100%;
         background: rgba(0,0,0,0.5);
         justify-content: center;
         align-items: center;
@@ -176,57 +198,114 @@
         cursor: pointer;
         color: var(--primary-color);
     }
+    .close:hover {
+        color: var(--custom-btn-bg-color);
+    }
    .consent-line {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    margin-top: 8px;
-    white-space: nowrap; 
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        margin-top: 8px;
    }
 
    .consent-line input[type="checkbox"] {
-    width: 16px;   
-    height: 16px;
-    cursor: pointer;
-    accent-color: var(--primary-color);
+        width: 16px;   
+        height: 16px;
+        cursor: pointer;
+        accent-color: var(--primary-color);
    }
 
     .consent-line a {
         color: var(--primary-color);
         text-decoration: underline;
         cursor: pointer;
-      } 
+    } 
 
-      .terms-text {
-    margin-top: 1rem; 
-    font-size: 0.8rem; 
-    color: #666; 
-    text-align: center;
-}
+    .terms-text {
+        margin-top: 1rem; 
+        font-size: 0.8rem; 
+        color: #666; 
+        text-align: center;
+    }
 
-.terms-text a {
-    color: var(--primary-color); 
-    text-decoration: none; 
-}
+    .terms-text a {
+        color: var(--primary-color); 
+        text-decoration: none; 
+    }
 
-.terms-text a:hover {
-    text-decoration: underline; 
-}
+    .terms-text a:hover {
+        text-decoration: underline; 
+    }
+
+    .loading {
+        display: none;
+        margin: 20px 0;
+        text-align: center;
+    }
+
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid var(--primary-color);
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 10px;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .success-message {
+        background: #d4edda;
+        color: #155724;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 15px 0;
+        border: 1px solid #c3e6cb;
+        text-align: left;
+    }
+
+    .error-message {
+        background: #f8d7da;
+        color: #721c24;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 15px 0;
+        border: 1px solid #f5c6cb;
+        text-align: left;
+    }
+
+    @media (max-width: 768px) {
+        .payment-options {
+            grid-template-columns: 1fr;
+        }
+        
+        .form-container {
+            margin: 10px;
+            padding: 15px;
+        }
+    }
       
 </style>
 </head>
 <body>
     
     <div class="logo-top-container">
-        <img src="images/logo.png" class="logo-image">
-        <div>
-            <div class="logo-text">Nexsphere Global</div>
-            <small class="logo-slogan">Virtual HR</small>
-        </div>
-    </div>
+   <img src="images/logo.png" class="img-fluid logo-image rounded-circle">
 
-    <div class="form-container">
+   <div class="logo-text-container">
+       <span class="logo-text">Nexsphere Global</span>
+       <span class="logo-slogan">Virtual HR</span>
+   </div>
+</div>
+
+
+
+     <div class="form-container">
         <h2>Register</h2>
 
         <!-- Role Selection -->
@@ -238,70 +317,64 @@
         <!-- Employee Form -->
         <form id="employeeForm">
             <label>Name</label>
-            <input type="text" placeholder="Joe" required>
+            <input type="text" name="name" placeholder="Full Name" required>
 
             <label>Contact No</label>
-            <input type="tel" placeholder="+91XXXXXXXXXX" required>
+            <input type="tel" name="contact_no" placeholder="+91XXXXXXXXXX" required>
 
             <label>Alternate No</label>
-            <input type="tel" placeholder="+91XXXXXXXXXX">
+            <input type="tel" name="alternate_no" placeholder="+91XXXXXXXXXX">
 
             <label>Email</label>
-            <input type="email" placeholder="example@gmail.com" required>
+            <input type="email" name="email" placeholder="example@gmail.com" required>
 
             <label>Joining Company</label>
-            <input type="text"placeholder="Company Name" required>
+            <input type="text" name="joining_company" placeholder="Company Name" required>
 
             <label>Joining Date</label>
-            <input  type="date" placeholder="DD/MM/YYYY" required>
+            <input type="date" name="joining_date" required>
 
             <label>Position</label>
-            <input type="text" placeholder="Position" required>
-
-            <!-- <label>Password</label>
-            <input type="password" required> -->
+            <input type="text" name="position" placeholder="Position" required>
 
             <div class="consent-line">
-                <input type="checkbox" required>
-                I agree to the <a onclick="openModal()">Consent Letter</a>
+                <input type="checkbox" id="employeeConsent" required>
+                <label for="employeeConsent">I agree to the <a onclick="openModal()">Consent Letter</a></label>
             </div>
 
-            <button type="submit">Register Employee</button>
-            <p class="terms-text">By registering, you agree to our <a href="employee.html">Terms & Conditions</a> and 
-                <a href="privacyandpolicy.html">Privacy Policy</a>.</p>
+            <button type="submit" id="employeeSubmitBtn">Register Employee</button>
+            <p class="terms-text">By registering, you agree to our <a href="#" onclick="alert('Terms & Conditions page')">Terms & Conditions</a> and 
+                <a href="#" onclick="alert('Privacy Policy page')">Privacy Policy</a>.</p>
         </form>
 
         <!-- Employer Form -->
         <form id="employerForm" style="display:none;">
             <label>Name</label>
-            <input type="text" placeholder="Joe" required>
+            <input type="text" name="name" placeholder="Full Name" required>
             
             <label>Company Name</label>
-            <input type="text"placeholder="ABC pvt Lmt" required>
+            <input type="text" name="company_name" placeholder="ABC Pvt Ltd" required>
 
             <label>Location of Company</label>
-            <input type="text" placeholder="City, State" required>
+            <input type="text" name="location" placeholder="City, State" required>
 
             <label>Business Email</label>
-            <input type="email" placeholder="example@gmail.com" required>
+            <input type="email" name="business_email" placeholder="business@company.com" required>
 
             <label>Business Number</label>
-            <input type="tel" placeholder="+91XXXXXXXXXX" required>
+            <input type="tel" name="business_number" placeholder="+91XXXXXXXXXX" required>
 
             <label>Designation</label>
-            <input type="text" placeholder="Designation" required>
+            <input type="text" name="designation" placeholder="Designation" required>
 
             <label>Company Size</label>
-            <input type="number"placeholder="Number of employees" required>
+            <input type="number" name="company_size" placeholder="Number of employees" required min="1">
 
             <div class="price">Employer Registration Fee: ₹999</div>
 
-            <!-- <label>Password</label>
-            <input type="password" required> -->
-
-            <button type="submit">Register & Pay</button>
-             <p class="terms-text">By registering, you agree to our <a href="employer.html">Terms & Conditions</a> and 
-                <a href="privacyandpolicy.html">Privacy Policy</a>.</p>
+            <button type="submit" id="employerSubmitBtn">Register & Pay ₹999</button>
+            <p class="terms-text">By registering, you agree to our <a href="#" onclick="alert('Terms & Conditions page')">Terms & Conditions</a> and 
+                <a href="#" onclick="alert('Privacy Policy page')">Privacy Policy</a>.</p>
         </form>
     </div>
 
@@ -310,39 +383,51 @@
         <div class="modal-content">
             <span class="close" onclick="closeModal()">&times;</span>
             <h3>Candidate Consent Letter</h3>
-            <p> I, the undersigned, hereby give my consent to be represented by [Your Company Name, e.g., 
-                Nexsphere Virtual HR Services] for job placement opportunities. I understand that by engaging with 
-               the recruitment process through the company, I am bound by the following terms and conditions 
-               outlined below.</p>
+            <p>I, the undersigned, hereby give my consent to be represented by Nexsphere Virtual HR Services for job placement opportunities. I understand that by engaging with the recruitment process through the company, I am bound by the following terms and conditions outlined below.</p>
 
-              <strong>6 Month Restriction Policy: </strong> 
-               If I am not selected by the company where I was interviewed, I agree that I will not directly join or 
-               apply to the same company for a period of six (6) months from the date of the interview. <br>
+            <p><strong>6 Month Restriction Policy:</strong> 
+            If I am not selected by the company where I was interviewed, I agree that I will not directly join or apply to the same company for a period of six (6) months from the date of the interview.</p>
 
-                <strong>Non-Joining Fee: </strong>
-                I understand and accept that a non-joining fee of ₹1,999 is applicable if I choose not to join the 
-                company after receiving an offer letter without a valid reason. <br>
+            <p><strong>Non-Joining Fee:</strong>
+            I understand and accept that a non-joining fee of ₹1,999 is applicable if I choose not to join the company after receiving an offer letter without a valid reason.</p>
 
-                <strong>Recruitment Process Compliance: </strong>
-                I agree not to bypass the recruitment process. I will not directly contact or join the company without 
-                going through the proper procedure defined by [Your Company Name]. <br>
+            <p><strong>Recruitment Process Compliance:</strong>
+            I agree not to bypass the recruitment process. I will not directly contact or join the company without going through the proper procedure defined by Nexsphere.</p>
 
-                <strong> Confidentiality & Integrity:</strong> 
-                I agree to maintain the confidentiality of all job-related information shared with me. I will not misuse 
-                or disclose any details of the hiring process or job offers to third parties. <br>
+            <p><strong>Confidentiality & Integrity:</strong> 
+            I agree to maintain the confidentiality of all job-related information shared with me. I will not misuse or disclose any details of the hiring process or job offers to third parties.</p>
 
-                <strong>False Information Clause:</strong>
-                 I confirm that all information provided by me during the hiring process is true and accurate. I 
-                  understand that providing false information may lead to disqualification or legal action.  
-     
-          
+            <p><strong>False Information Clause:</strong>
+            I confirm that all information provided by me during the hiring process is true and accurate. I understand that providing false information may lead to disqualification or legal action.</p>
         </div>
     </div>
-     <!-- JAVASCRIPT FILES -->
-        <script src="js/jquery.min.js"></script>
-        <script src="js/bootstrap.min.js"></script>
-        <script src="js/owl.carousel.min.js"></script>
-        <script src="js/counter.js"></script>
-        <script src="js/custom.js"></script>
+
+    <!-- Loading Modal -->
+    <div id="loadingModal" class="modal">
+        <div class="modal-content" style="text-align: center; max-width: 300px;">
+            <div class="loading" style="display: block;">
+                <div class="spinner"></div>
+                <p id="loadingText">Processing...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div id="successModal" class="modal">
+        <div class="modal-content" style="text-align: center;">
+            <span class="close" onclick="closeSuccessModal()">&times;</span>
+            <div id="successContent"></div>
+        </div>
+    </div>
+
+    <!-- Razorpay Script -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+  <!-- JAVASCRIPT FILES -->
+    <script src="js/jquery.min.js"></script>
+    <script src="js/bootstrap.min.js"></script>
+    <script src="js/owl.carousel.min.js"></script>
+    <script src="js/counter.js"></script>
+    <script src="js/custom.js"></script>
 </body>
 </html>

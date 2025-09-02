@@ -764,7 +764,11 @@ nav[aria-label="breadcrumb"] {
 .about-image {
   display: block;
   object-fit: cover;
+  object-position: center;
   height: 100%;
+  width: 100%;  
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 
 .custom-border-radius-start {
@@ -809,6 +813,7 @@ nav[aria-label="breadcrumb"] {
     box-shadow: 0 0 0 20px rgba(0, 0, 0, 0);
   }
 }
+
 
 
 /*---------------------------------------

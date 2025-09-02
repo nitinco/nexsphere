@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>HR Dashboard - NexSphere</title>
+  <style>
+    /* ===== COLORS & VARIABLES ===== */
+    :root {
+      --white-color: #ffffff;
+      --primary-color: #307d73;
+      --secondary-color: #80cdc3;
+      --section-bg-color: #f0f8ff;
+      --custom-btn-bg-color: #62afa5;
+      --dark-color: #000000;
+      --p-color: #717275;
+      --border-color: #e9eaeb;
+      --success-color: #28a745;
+      --warning-color: #ffc107;
+      --danger-color: #dc3545;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--section-bg-color);
+      color: var(--dark-color);
+    }
+    /* ===== HEADER ===== */
+    .header {
+      background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+      color: var(--white-color);
+      padding: 1rem 2rem;
+      display: flex; justify-content: space-between; align-items: center;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      height: 80px;
+    }
+    .header h1 { font-size: 1.5rem; font-weight: 600; }
+    .header-right { display: flex; align-items: center; gap: 1rem; }
+    .user-info { display: flex; align-items: center; gap: 0.5rem; }
+    .logout-btn {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: var(--white-color);
+      padding: 0.5rem 1rem; border-radius: 6px;
+      cursor: pointer; transition: all 0.3s ease;
+    }
+    .logout-btn:hover { background: rgba(255,255,255,0.3); }
+
+    /* ===== SIDEBAR ===== */
+    .sidebar {
+      position: fixed; left: 0; top: 80px;
+      width: 250px; height: calc(100vh - 80px);
+      background: var(--white-color);
+      box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+      padding: 1rem 0; overflow-y: auto;
+    }
+    .sidebar-menu { list-style: none; }
+    .sidebar-menu li { margin: 0.5rem 0; }
+    .sidebar-menu a {
+      display: flex; align-items: center;
+      padding: 1rem 1.5rem;
+      color: var(--dark-color); text-decoration: none;
+      transition: all 0.3s ease;
+    }
+    .sidebar-menu a:hover,
+    .sidebar-menu a.active {
+      background: var(--section-bg-color);
+      border-right: 3px solid var(--primary-color);
+    }
+
+    /* ===== MAIN CONTENT ===== */
+    .main-content {
+      margin-left: 250px; padding: 2rem;
+      min-height: calc(100vh - 80px);
+      margin-top: 80px;
+    }
+
+    /* ===== STATS CARDS ===== */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem; margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: var(--white-color); padding: 1.5rem; border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      display: flex; align-items: center; gap: 1rem;
+      transition: transform 0.3s ease;
+    }
+    .stat-card:hover { transform: translateY(-3px); }
+    .stat-icon {
+      width: 50px; height: 50px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem; color: var(--white-color);
+    }
+    .stat-icon.employees { background: var(--primary-color); }
+    .stat-icon.employers { background: var(--secondary-color); }
+    .stat-icon.payments { background: var(--success-color); }
+    .stat-icon.revenue { background: var(--warning-color); }
+    .stat-info h3 { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .stat-info p { color: var(--p-color); font-size: 0.9rem; }
+
+    /* ===== DATA TABLE ===== */
+    .data-section {
+      background: var(--white-color); border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      margin-bottom: 2rem; overflow: hidden;
+    }
+    .data-header {
+      padding: 1.5rem; border-bottom: 1px solid var(--border-color);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .data-header h2 { font-size: 1.3rem; font-weight: 600; }
+    .filters { display: flex; gap: 1rem; align-items: center; }
+    .filter-select {
+      padding: 0.5rem; border: 1px solid var(--border-color);
+      border-radius: 6px; background: var(--white-color);
+    }
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th, .data-table td {
+      padding: 1rem; text-align: left;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .data-table th {
+      background: var(--section-bg-color);
+      font-weight: 600; color: var(--dark-color);
+    }
+    .data-table tr:hover { background: var(--section-bg-color); }
+
+    /* ===== BADGES ===== */
+    .status-badge {
+      padding: 0.25rem 0.75rem; border-radius: 20px;
+      font-size: 0.8rem; font-weight: 500; text-transform: uppercase;
+    }
+    .status-badge.active { background: rgba(40,167,69,0.1); color: var(--success-color); }
+    .status-badge.pending { background: rgba(255,193,7,0.1); color: var(--warning-color); }
+    .status-badge.paid { background: rgba(40,167,69,0.1); color: var(--success-color); }
+    .status-badge.failed { background: rgba(220,53,69,0.1); color: var(--danger-color); }
+    .status-badge.created { background: rgba(255,193,7,0.1); color: var(--warning-color); }
+    .status-badge.pending_verification { background: rgba(255,193,7,0.1); color: var(--warning-color); }
+
+    /* ===== LOADING ===== */
+    .loading {
+      display: flex; justify-content: center; align-items: center;
+      padding: 2rem; color: var(--p-color);
+    }
+    .spinner {
+      width: 30px; height: 30px;
+      border: 3px solid var(--border-color);
+      border-top: 3px solid var(--primary-color);
+      border-radius: 50%; animation: spin 1s linear infinite;
+      margin-right: 1rem;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    .error-display {
+      padding: 2rem;
+      text-align: center;
+      color: var(--danger-color);
+      background: rgba(220,53,69,0.1);
+      border-radius: 8px;
+      margin: 1rem;
+    }
+
+    .no-data {
+      padding: 2rem;
+      text-align: center;
+      color: var(--p-color);
+      font-style: italic;
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 768px) {
+      .sidebar { transform: translateX(-100%); transition: transform 0.3s ease; }
+      .sidebar.open { transform: translateX(0); }
+      .main-content { margin-left: 0; padding: 1rem; }
+      .header { padding: 1rem; }
+      .stats-grid { grid-template-columns: 1fr; }
+      .data-header { flex-direction: column; gap: 1rem; align-items: stretch; }
+      .filters { justify-content: center; }
+    }
+    /* ===== SECTIONS ===== */
+    .section { display: none; }
+    .section.active { display: block; }
+
+    /* Fix for CSS display issues */
+    .stats-grid {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)) !important;
+      gap: 1.5rem !important;
+      margin-bottom: 2rem !important;
+    }
+
+    /* ===== EMAIL COMPOSE FORM ===== */
+    .email-compose {
+      background: var(--white-color);
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      margin-bottom: 2rem;
+      padding: 1.5rem;
+    }
+    .email-form {
+      display: grid;
+      gap: 1rem;
+    }
+    .email-input, .email-textarea {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      font-family: inherit;
+    }
+    .email-textarea {
+      min-height: 120px;
+      resize: vertical;
+    }
+    .email-btn {
+      background: var(--primary-color);
+      color: var(--white-color);
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.3s ease;
+    }
+    .email-btn:hover {
+      background: var(--custom-btn-bg-color);
+    }
+    .email-btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .email-status {
+      display: none;
+      padding: 0.75rem;
+      border-radius: 6px;
+      margin-top: 1rem;
+    }
+    .email-status.success {
+      background: rgba(40,167,69,0.1);
+      color: var(--success-color);
+      border: 1px solid var(--success-color);
+    }
+    .email-status.error {
+      background: rgba(220,53,69,0.1);
+      color: var(--danger-color);
+      border: 1px solid var(--danger-color);
+    }
+  </style>
+</head>
+<body>
+  <!-- ===== HEADER ===== -->
+  <div class="header">
+    <h1>HR Dashboard - Nexsphere</h1>
+    <div class="header-right">
+      <div class="user-info">
+        <span id="userRole">HR Manager</span>
+        <span>|</span>
+        <span id="userName">Loading...</span>
+      </div>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <!-- ===== SIDEBAR ===== -->
+  <div class="sidebar">
+    <ul class="sidebar-menu">
+      <li><a href="#" class="menu-link active" data-section="dashboard">📊 Dashboard</a></li>
+      <li><a href="#" class="menu-link" data-section="employees">👥 Employees</a></li>
+      <li><a href="#" class="menu-link" data-section="employers">🏢 Employers</a></li>
+      <li><a href="#" class="menu-link" data-section="payments">💳 Payments</a></li>
+      <li><a href="#" class="menu-link" data-section="emails">📧 Email Management</a></li>
+    </ul>
+  </div>
+
+  <!-- ===== MAIN CONTENT ===== -->
+  <div class="main-content">
+    <!-- Dashboard -->
+    <div id="dashboard" class="section active">
+      <div class="stats-grid" id="statsGrid">
+        <div class="loading"><div class="spinner"></div> Loading statistics...</div>
+      </div>
+    </div>
+
+    <!-- Employees -->
+    <div id="employees" class="section">
+      <div class="data-section">
+        <div class="data-header">
+          <h2>Employee Management</h2>
+          <div class="filters">
+            <select class="filter-select" id="employeeStatusFilter">
+              <option value="">All Status</option>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+            </select>
+          </div>
+        </div>
+        <div id="employeesTableContainer">
+          <div class="loading"><div class="spinner"></div> Loading employees...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Employers -->
+    <div id="employers" class="section">
+      <div class="data-section">
+        <div class="data-header">
+          <h2>Employer Management</h2>
+          <div class="filters">
+            <select class="filter-select" id="employerStatusFilter">
+              <option value="">All Status</option>
+              <option value="active">Active</option>
+              <option value="pending">Pending</option>
+            </select>
+          </div>
+        </div>
+        <div id="employersTableContainer">
+          <div class="loading"><div class="spinner"></div> Loading employers...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Payments -->
+    <div id="payments" class="section">
+      <div class="data-section">
+        <div class="data-header">
+          <h2>Payment Management</h2>
+          <div class="filters">
+            <select class="filter-select" id="paymentStatusFilter">
+              <option value="">All Status</option>
+              <option value="paid">Paid</option>
+              <option value="failed">Failed</option>
+              <option value="created">Created</option>
+              <option value="pending_verification">Pending Verification</option>
+            </select>
+            <select class="filter-select" id="serviceTypeFilter">
+              <option value="">All Services</option>
+              <option value="employee_registration">Employee Registration</option>
+              <option value="employer_registration">Employer Registration</option>
+            </select>
+          </div>
+        </div>
+        <div id="paymentsTableContainer">
+          <div class="loading"><div class="spinner"></div> Loading payments...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Email Management -->
+    <div id="emails" class="section">
+      <!-- Email Compose Form -->
+      <div class="email-compose">
+        <h3>Send Email</h3>
+        <form class="email-form" id="emailForm">
+          <div>
+            <label for="emailTo">To:</label>
+            <input type="email" id="emailTo" class="email-input" placeholder="recipient@example.com" required>
+          </div>
+          <div>
+            <label for="emailSubject">Subject:</label>
+            <input type="text" id="emailSubject" class="email-input" placeholder="Email subject" required>
+          </div>
+          <div>
+            <label for="emailBody">Message:</label>
+            <textarea id="emailBody" class="email-textarea" placeholder="Email message..." required></textarea>
+          </div>
+          <div>
+            <label for="recipientType">Recipient Type:</label>
+            <select id="recipientType" class="email-input">
+              <option value="other">Other</option>
+              <option value="employee">Employee</option>
+              <option value="employer">Employer</option>
+            </select>
+          </div>
+          <button type="submit" class="email-btn" id="sendEmailBtn">Send Email</button>
+        </form>
+        <div id="emailStatus" class="email-status"></div>
+      </div>
+
+      <!-- Email Logs -->
+      <div class="data-section">
+        <div class="data-header">
+          <h2>Email Logs</h2>
+          <div class="filters">
+            <select class="filter-select" id="emailStatusFilter">
+              <option value="">All Status</option>
+              <option value="sent">Sent</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
+        </div>
+        <div id="emailsTableContainer">
+          <div class="loading"><div class="spinner"></div> Loading emails...</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <!-- ===== SCRIPT ===== -->
+  <script>
+    const API_BASE_URL = 'http://localhost:3000';
+    let currentUser = null;
+
+    // Check authentication
+    window.addEventListener('load', async () => {
+        const token = sessionStorage.getItem('authToken');
+        const userInfo = sessionStorage.getItem('userInfo');
+        
+        if (!token || !userInfo) {
+            window.location.href = 'login.html';
+            return;
+        }
+        
+        currentUser = JSON.parse(userInfo);
+        document.getElementById('userName').textContent = currentUser.name;
+        document.getElementById('userRole').textContent = currentUser.role;
+        
+        await loadDashboardStats();
+
+        // Attach filter listeners
+        document.getElementById('employeeStatusFilter').addEventListener('change', loadEmployees);
+        document.getElementById('employerStatusFilter').addEventListener('change', loadEmployers);
+        document.getElementById('paymentStatusFilter').addEventListener('change', loadPayments);
+        document.getElementById('serviceTypeFilter').addEventListener('change', loadPayments);
+        document.getElementById('emailStatusFilter').addEventListener('change', loadEmails);
+
+        // Add email form listener
+        document.getElementById('emailForm').addEventListener('submit', sendEmail);
+    });
+
+    // API Request helper
+    async function apiRequest(endpoint, options = {}) {
+        const token = sessionStorage.getItem('authToken');
+        const defaultOptions = {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            }
+        };
+        
+        const mergedOptions = {
+            ...defaultOptions,
+            ...options,
+            headers: { ...defaultOptions.headers, ...options.headers }
+        };
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, mergedOptions);
+            
+            if (response.status === 401) {
+                logout();
+                return null;
+            }
+            
+            const data = await response.json();
+            return { response, data };
+        } catch (err) {
+            console.error('API Error:', err);
+            return null;
+        }
+    }
+
+    // Send Email Function
+    async function sendEmail(e) {
+        e.preventDefault();
+        
+        const sendBtn = document.getElementById('sendEmailBtn');
+        const statusDiv = document.getElementById('emailStatus');
+        const originalText = sendBtn.textContent;
+        
+        // Get form data
+        const to = document.getElementById('emailTo').value.trim();
+        const subject = document.getElementById('emailSubject').value.trim();
+        const body = document.getElementById('emailBody').value.trim();
+        const recipientType = document.getElementById('recipientType').value;
+        
+        // Validate
+        if (!to || !subject || !body) {
+            showEmailStatus('error', 'All fields are required');
+            return;
+        }
+        
+        if (!to.includes('@')) {
+            showEmailStatus('error', 'Invalid email address');
+            return;
+        }
+        
+        // Disable button and show loading
+        sendBtn.disabled = true;
+        sendBtn.textContent = 'Sending...';
+        statusDiv.style.display = 'none';
+        
+        try {
+            const result = await apiRequest('/api/send-email', {
+                method: 'POST',
+                body: JSON.stringify({ to, subject, body, recipientType })
+            });
+            
+            if (result && result.data.success) {
+                showEmailStatus('success', 'Email sent successfully!');
+                document.getElementById('emailForm').reset();
+                
+                // Reload email logs if we're on emails section
+                if (document.getElementById('emails').classList.contains('active')) {
+                    await loadEmails();
+                }
+            } else {
+                showEmailStatus('error', result?.data?.message || 'Failed to send email');
+            }
+            
+        } catch (error) {
+            console.error('Email sending error:', error);
+            showEmailStatus('error', 'Error sending email');
+        } finally {
+            sendBtn.disabled = false;
+            sendBtn.textContent = originalText;
+        }
+    }
+
+    // Show email status
+    function showEmailStatus(type, message) {
+        const statusDiv = document.getElementById('emailStatus');
+        statusDiv.className = `email-status ${type}`;
+        statusDiv.textContent = message;
+        statusDiv.style.display = 'block';
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            statusDiv.style.display = 'none';
+        }, 5000);
+    }
+
+    // Load Email Logs
+    async function loadEmails() {
+        const status = document.getElementById('emailStatusFilter').value;
+        const result = await apiRequest(`/api/emails${status ? `?status=${status}` : ''}`);
+        
+        if (result && result.data.success) {
+            const emails = result.data.emails;
+            if (!emails.length) {
+                document.getElementById('emailsTableContainer').innerHTML =
+                    `<div class="no-data">No emails found</div>`;
+                return;
+            }
+            
+            let rows = emails.map(email => `
+                <tr>
+                    <td>${email.recipient_email || 'N/A'}</td>
+                    <td>${email.recipient_type || 'N/A'}</td>
+                    <td>${email.subject || 'N/A'}</td>
+                    <td><span class="status-badge ${email.status || 'sent'}">${email.status || 'sent'}</span></td>
+                    <td>${email.sent_at ? new Date(email.sent_at).toLocaleString() : 'N/A'}</td>
+                    <td>${email.error_message || '-'}</td>
+                </tr>`).join('');
+                
+            document.getElementById('emailsTableContainer').innerHTML =
+                `<table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Recipient</th><th>Type</th><th>Subject</th>
+                            <th>Status</th><th>Sent At</th><th>Error</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+        } else {
+            document.getElementById('emailsTableContainer').innerHTML =
+                `<div class="error-display">
+                    Error loading emails. Please check if the backend server is running.
+                </div>`;
+        }
+    }
+
+    // Logout
+    function logout() {
+        sessionStorage.removeItem('authToken');
+        sessionStorage.removeItem('userInfo');
+        sessionStorage.removeItem('hr_remembered_email');
+        sessionStorage.removeItem('hr_remembered_password');
+        window.location.href = 'hrlogin.html';
+    }
+
+    // Menu Navigation
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.menu-link').forEach(link => {
+            link.addEventListener('click', e => {
+                e.preventDefault();
+                const targetSection = link.dataset.section;
+                
+                // Update active menu item
+                document.querySelectorAll('.menu-link').forEach(l => l.classList.remove('active'));
+                link.classList.add('active');
+                
+                // Update active section
+                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+                document.getElementById(targetSection).classList.add('active');
+                
+                loadSectionData(targetSection);
+            });
+        });
+    });
+
+    // Load Section Data
+    async function loadSectionData(section) {
+        if (section === 'dashboard') await loadDashboardStats();
+        if (section === 'employees') await loadEmployees();
+        if (section === 'employers') await loadEmployers();
+        if (section === 'payments') await loadPayments();
+        if (section === 'emails') {
+            await loadEmails();
+        }
+    }
+
+    // Load Dashboard Stats
+    async function loadDashboardStats() {
+        try {
+            const result = await apiRequest('/api/dashboard/stats');
+            
+            if (result && result.data.success) {
+                const stats = result.data.stats;
+                document.getElementById('statsGrid').innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-icon employees">👥</div>
+                        <div class="stat-info">
+                            <h3>${stats.employees.total}</h3>
+                            <p>Total Employees</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon employers">🏢</div>
+                        <div class="stat-info">
+                            <h3>${stats.employers.total}</h3>
+                            <p>Total Employers</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon payments">💳</div>
+                        <div class="stat-info">
+                            <h3>${stats.payments.successful}</h3>
+                            <p>Successful Payments</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon revenue">💰</div>
+                        <div class="stat-info">
+                            <h3>₹${stats.payments.totalRevenue}</h3>
+                            <p>Total Revenue</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon employees">✅</div>
+                        <div class="stat-info">
+                            <h3>${stats.employees.active}</h3>
+                            <p>Active Employees</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon employers">✅</div>
+                        <div class="stat-info">
+                            <h3>${stats.employers.active}</h3>
+                            <p>Active Employers</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon payments">📧</div>
+                        <div class="stat-info">
+                            <h3>${stats.emails.employeeEmails}</h3>
+                            <p>Emails to Employees</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon revenue">📧</div>
+                        <div class="stat-info">
+                            <h3>${stats.emails.employerEmails}</h3>
+                            <p>Emails to Employers</p>
+                        </div>
+                    </div>
+                `;
+            } else {
+                document.getElementById('statsGrid').innerHTML =
+                    `<div class="error-display">
+                        Error loading statistics. Please check if the backend server is running.
+                    </div>`;
+            }
+        } catch (error) {
+            console.error('Dashboard stats error:', error);
+            document.getElementById('statsGrid').innerHTML =
+                `<div class="error-display">
+                    Connection error. Please check if the backend server is running.
+                </div>`;
+        }
+    }
+
+    // Load Employees
+    async function loadEmployees() {
+        const status = document.getElementById('employeeStatusFilter').value;
+        const result = await apiRequest(`/api/employees${status ? `?status=${status}` : ''}`);
+        
+        if (result && result.data.success) {
+            const employees = result.data.employees;
+            if (!employees.length) {
+                document.getElementById('employeesTableContainer').innerHTML =
+                    `<div class="no-data">No employees found</div>`;
+                return;
+            }
+            
+            let rows = employees.map(emp => `
+                <tr>
+                    <td>${emp.name || 'N/A'}</td>
+                    <td>${emp.email || 'N/A'}</td>
+                    <td>${emp.contact_no || 'N/A'}</td>
+                    <td>${emp.joining_company || 'N/A'}</td>
+                    <td>${emp.position || 'N/A'}</td>
+                    <td>${emp.joining_date ? new Date(emp.joining_date).toLocaleDateString() : 'N/A'}</td>
+                    <td>₹${emp.salary || 'N/A'}</td>
+                    <td><span class="status-badge ${emp.status || 'active'}">${emp.status || 'active'}</span></td>
+                </tr>`).join('');
+                
+            document.getElementById('employeesTableContainer').innerHTML =
+                `<table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th><th>Email</th><th>Contact</th><th>Company</th>
+                            <th>Position</th><th>Joining Date</th><th>Salary</th><th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+        } else {
+            document.getElementById('employeesTableContainer').innerHTML =
+                `<div class="error-display">
+                    Error loading employees. Please check if the backend server is running.
+                </div>`;
+        }
+    }
+
+    // Load Employers
+    async function loadEmployers() {
+        const status = document.getElementById('employerStatusFilter').value;
+        const result = await apiRequest(`/api/employers${status ? `?status=${status}` : ''}`);
+        
+        if (result && result.data.success) {
+            const employers = result.data.employers;
+            if (!employers.length) {
+                document.getElementById('employersTableContainer').innerHTML =
+                    `<div class="no-data">No employers found</div>`;
+                return;
+            }
+            
+            let rows = employers.map(emp => `
+                <tr>
+                    <td>${emp.company_name || 'N/A'}</td>
+                    <td>${emp.name || 'N/A'}</td>
+                    <td>${emp.business_email || 'N/A'}</td>
+                    <td>${emp.business_number || 'N/A'}</td>
+                    <td>${emp.location || 'N/A'}</td>
+                    <td>${emp.designation || 'N/A'}</td>
+                    <td>${emp.company_size || 'N/A'}</td>
+                    <td>${emp.registered_on ? new Date(emp.registered_on).toLocaleDateString() : 'N/A'}</td>
+                    <td><span class="status-badge ${emp.status || 'active'}">${emp.status || 'active'}</span></td>
+                </tr>`).join('');
+                
+            document.getElementById('employersTableContainer').innerHTML =
+                `<table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Company Name</th><th>Contact Person</th><th>Email</th>
+                            <th>Contact</th><th>Location</th><th>Designation</th><th>Size</th><th>Registered On</th><th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+        } else {
+            document.getElementById('employersTableContainer').innerHTML =
+                `<div class="error-display">
+                    Error loading employers. Please check if the backend server is running.
+                </div>`;
+        }
+    }
+
+    // Load Payments
+    async function loadPayments() {
+        const status = document.getElementById('paymentStatusFilter').value;
+        const serviceType = document.getElementById('serviceTypeFilter').value;
+        let query = [];
+        
+        if (status) query.push(`status=${status}`);
+        if (serviceType) query.push(`service_type=${serviceType}`);
+        
+        const queryString = query.length ? `?${query.join('&')}` : '';
+        const result = await apiRequest(`/api/payments${queryString}`);
+        
+        if (result && result.data.success) {
+            const payments = result.data.payments;
+            if (!payments.length) {
+                document.getElementById('paymentsTableContainer').innerHTML =
+                    `<div class="no-data">No payments found</div>`;
+                return;
+            }
+            
+            let rows = payments.map(pay => `
+                <tr>
+                    <td>${pay.name || 'N/A'}</td>
+                    <td>${pay.business_email || pay.email || 'N/A'}</td>
+                    <td>₹${pay.amount || 'N/A'}</td>
+                    <td>${pay.payment_method || 'N/A'}</td>
+                    <td>${pay.payment_type ? pay.payment_type.replace('_', ' ').toUpperCase() : 'N/A'}</td>
+                    <td>${pay.payment_date ? new Date(pay.payment_date).toLocaleDateString() : 'N/A'}</td>
+                    <td><span class="status-badge ${pay.payment_status || 'created'}">${pay.payment_status || 'created'}</span></td>
+                    <td>${pay.razorpay_payment_id || 'N/A'}</td>
+                </tr>`).join('');
+                
+            document.getElementById('paymentsTableContainer').innerHTML =
+                `<table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>User Name</th><th>User Email</th><th>Amount</th><th>Method</th>
+                            <th>Service Type</th><th>Date</th><th>Status</th><th>Transaction ID</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+        } else {
+            document.getElementById('paymentsTableContainer').innerHTML =
+                `<div class="error-display">
+                    Error loading payments. Please check if the backend server is running.
+                </div>`;
+        }
+    }
+
+  </script>
+</body>
+</html>
