@@ -1002,40 +1002,7 @@ app.use((error, req, res, next) => {
 // server.js
 // <CHANGE> Express app exported for Vercel serverless (no app.listen)
 
-const express = require("express");
-const cors = require("cors");
-const mysql = require("mysql2/promise"); // or remove if not using
 
-
-// Middlewares
-app.use(cors());
-app.use(express.json());
-
-// Optional: simple root so "/" never 404s at the app level
-app.get("/", (_req, res) => {
-  res.status(200).send("Nexsphere API is live");
-});
-
-// Example health check that verifies DB connectivity (adjust envs)
-app.get("/health", async (_req, res) => {
-  try {
-    if (!process.env.DB_HOST) {
-      return res.json({ ok: true, note: "DB not configured" });
-    }
-
-    const conn = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
-    });
-    await conn.ping();
-    await conn.end();
-    return res.json({ ok: true });
-  } catch (err) {
-    return res.status(500).json({ ok: false, error: err.message });
-  }
-});
 
 /* 
 // ... existing code ...

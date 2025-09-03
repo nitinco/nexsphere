@@ -30,12 +30,14 @@
     "formidable": "^3.5.4",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
-    "mysql": "^2.18.1",
     "mysql2": "^3.9.1",
     "nodemailer": "^6.9.9",
     "razorpay": "^2.9.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.3"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
