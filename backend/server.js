@@ -988,15 +988,65 @@ app.use((error, req, res, next) => {
 });
 
 // Start the server
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-    console.log(`Access the application at: http://localhost:${port}`);
-    console.log('Make sure your .env file contains the required database and other configurations');
-    console.log('Required .env variables:');
-    console.log('- DB_HOST, DB_USER, DB_PASSWORD, DB_NAME');
-    console.log('- RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET');
-    console.log('- EMAIL_USER, EMAIL_PASSWORD');
-    console.log('- JWT_SECRET');
+// app.listen(port, () => {
+//     console.log(`Server is running on port ${port}`);
+//     console.log(`Access the application at: http://localhost:${port}`);
+//     console.log('Make sure your .env file contains the required database and other configurations');
+//     console.log('Required .env variables:');
+//     console.log('- DB_HOST, DB_USER, DB_PASSWORD, DB_NAME');
+//     console.log('- RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET');
+//     console.log('- EMAIL_USER, EMAIL_PASSWORD');
+//     console.log('- JWT_SECRET');
+// });
+
+// server.js
+// <CHANGE> Express app exported for Vercel serverless (no app.listen)
+
+const express = require("express");
+const cors = require("cors");
+const mysql = require("mysql2/promise"); // or remove if not using
+
+
+// Middlewares
+app.use(cors());
+app.use(express.json());
+
+// Optional: simple root so "/" never 404s at the app level
+app.get("/", (_req, res) => {
+  res.status(200).send("Nexsphere API is live");
 });
 
+// Example health check that verifies DB connectivity (adjust envs)
+app.get("/health", async (_req, res) => {
+  try {
+    if (!process.env.DB_HOST) {
+      return res.json({ ok: true, note: "DB not configured" });
+    }
+
+    const conn = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+    });
+    await conn.ping();
+    await conn.end();
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/* 
+// ... existing code ...
+// <CHANGE> Move ALL your existing routes/middleware here.
+// DO NOT call app.listen() anywhere.
+*/
+
+// Optional: app-level 404 (so unmatched routes return JSON instead of Vercel 404 card)
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found", path: req.path });
+});
+
+// <CHANGE> Export the app for Vercel's Node builder
 module.exports = app;
