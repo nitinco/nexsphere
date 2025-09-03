@@ -66,7 +66,7 @@
 
 })(window.jQuery);
 
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = '"https://nexsphere-two.vercel.app/api"';
 let employerFormData = {};
 
 // Role selection functionality

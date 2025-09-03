@@ -998,3 +998,5 @@ app.listen(port, () => {
     console.log('- EMAIL_USER, EMAIL_PASSWORD');
     console.log('- JWT_SECRET');
 });
+
+module.exports = app;
