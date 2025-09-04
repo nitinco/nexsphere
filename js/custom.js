@@ -1,29 +1,26 @@
-
 (function ($) {
-
   "use strict";
 
   // COUNTER NUMBERS
   jQuery('.counter-thumb').appear(function () {
     jQuery('.counter-number').countTo();
   });
-  //copyRight Year
+
+  // Copyright Year
   $(document).ready(function () {
     const currentYear = new Date().getFullYear();
     $('#copyright-text').text(currentYear);
   });
-//faq open close
 
-    const questions = document.querySelectorAll('.faq-question');
-
-    questions.forEach(q => {
-      q.addEventListener('click', () => {
-        q.classList.toggle('active');
-        const answer = q.nextElementSibling;
-        answer.style.display = answer.style.display === 'block' ? 'none' : 'block';
-      });
+  // FAQ open close
+  const questions = document.querySelectorAll('.faq-question');
+  questions.forEach(q => {
+    q.addEventListener('click', () => {
+      q.classList.toggle('active');
+      const answer = q.nextElementSibling;
+      answer.style.display = answer.style.display === 'block' ? 'none' : 'block';
     });
-
+  });
 
   // REVIEWS CAROUSEL
   $('.reviews-carousel').owlCarousel({
@@ -66,440 +63,706 @@
 
 })(window.jQuery);
 
-const API_BASE_URL = '"https://nexsphere-two.vercel.app/api"';
+// API Configuration
+const API_BASE_URL = 'https://api.nexsphereglobal.com/';
 let employerFormData = {};
 
+// Utility Functions
+function showMessage(message, type = 'info') {
+  const alertClass = type === 'error' ? 'alert-danger' : type === 'success' ? 'alert-success' : 'alert-info';
+  const alertHtml = `<div class="alert ${alertClass} alert-dismissible fade show" role="alert">
+    ${message}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>`;
+  
+  // Try to find an existing alert container or create one
+  let alertContainer = document.querySelector('.alert-container');
+  if (!alertContainer) {
+    alertContainer = document.createElement('div');
+    alertContainer.className = 'alert-container position-fixed top-0 start-50 translate-middle-x mt-3';
+    alertContainer.style.zIndex = '9999';
+    document.body.appendChild(alertContainer);
+  }
+  
+  alertContainer.innerHTML = alertHtml;
+  
+  // Auto remove after 5 seconds
+  setTimeout(() => {
+    const alert = alertContainer.querySelector('.alert');
+    if (alert) {
+      alert.remove();
+    }
+  }, 5000);
+}
+
+// Enhanced error handling for fetch requests
+async function makeAPICall(url, options = {}) {
+  try {
+    // Set default headers
+    const defaultHeaders = {
+      'Content-Type': 'application/json',
+    };
+    
+    const config = {
+      ...options,
+      headers: {
+        ...defaultHeaders,
+        ...(options.headers || {})
+      }
+    };
+
+    console.log('Making API call to:', url);
+    console.log('Request config:', config);
+
+    const response = await fetch(url, config);
+    
+    console.log('Response status:', response.status);
+    console.log('Response headers:', response.headers);
+
+    // Check if response is ok
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      throw new Error(`Server error (${response.status}): ${errorText || response.statusText}`);
+    }
+
+    // Get response text first
+    const responseText = await response.text();
+    console.log('Response text:', responseText);
+
+    // Check if response has content
+    if (!responseText.trim()) {
+      throw new Error('Empty response from server');
+    }
+
+    // Try to parse JSON
+    try {
+      const jsonData = JSON.parse(responseText);
+      console.log('Parsed JSON:', jsonData);
+      return jsonData;
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
+      console.error('Response was:', responseText);
+      throw new Error(`Invalid JSON response from server: ${responseText.substring(0, 200)}...`);
+    }
+
+  } catch (error) {
+    console.error('API call error:', error);
+    
+    if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+      throw new Error('Cannot connect to server. Please ensure the server is running on http://localhost:3000');
+    }
+    
+    throw error;
+  }
+}
+
+// Test server connection
+async function testServerConnection() {
+  try {
+    const response = await makeAPICall(`${API_BASE_URL}/api/test`);
+    console.log('Server test successful:', response);
+    return true;
+  } catch (error) {
+    console.error('Server connection test failed:', error);
+    showMessage(`Server connection failed: ${error.message}`, 'error');
+    return false;
+  }
+}
+
 // Role selection functionality
-document.getElementById('employeeBtn').addEventListener('click', function() {
-    document.getElementById('employeeBtn').classList.add('active');
-    document.getElementById('employerBtn').classList.remove('active');
-    document.getElementById('employeeForm').style.display = 'block';
-    document.getElementById('employerForm').style.display = 'none';
-});
+function initializeRoleSelection() {
+  const employeeBtn = document.getElementById('employeeBtn');
+  const employerBtn = document.getElementById('employerBtn');
+  const employeeForm = document.getElementById('employeeForm');
+  const employerForm = document.getElementById('employerForm');
 
-document.getElementById('employerBtn').addEventListener('click', function() {
-    document.getElementById('employerBtn').classList.add('active');
-    document.getElementById('employeeBtn').classList.remove('active');
-    document.getElementById('employerForm').style.display = 'block';
-    document.getElementById('employeeForm').style.display = 'none';
-});
+  if (employeeBtn && employerBtn && employeeForm && employerForm) {
+    employeeBtn.addEventListener('click', function() {
+      employeeBtn.classList.add('active');
+      employerBtn.classList.remove('active');
+      employeeForm.style.display = 'block';
+      employerForm.style.display = 'none';
+    });
 
-// Show loading modal
+    employerBtn.addEventListener('click', function() {
+      employerBtn.classList.add('active');
+      employeeBtn.classList.remove('active');
+      employerForm.style.display = 'block';
+      employeeForm.style.display = 'none';
+    });
+  }
+}
+
+// Modal functions
 function showLoading(text = 'Processing...') {
-    document.getElementById('loadingText').textContent = text;
-    document.getElementById('loadingModal').style.display = 'flex';
+  const loadingModal = document.getElementById('loadingModal');
+  const loadingText = document.getElementById('loadingText');
+  
+  if (loadingModal && loadingText) {
+    loadingText.textContent = text;
+    loadingModal.style.display = 'flex';
+  }
 }
 
-// Hide loading modal
 function hideLoading() {
-    document.getElementById('loadingModal').style.display = 'none';
+  const loadingModal = document.getElementById('loadingModal');
+  if (loadingModal) {
+    loadingModal.style.display = 'none';
+  }
 }
 
-// Show success modal
 function showSuccess(content) {
-    document.getElementById('successContent').innerHTML = content;
-    document.getElementById('successModal').style.display = 'flex';
+  const successModal = document.getElementById('successModal');
+  const successContent = document.getElementById('successContent');
+  
+  if (successModal && successContent) {
+    successContent.innerHTML = content;
+    successModal.style.display = 'flex';
+  }
 }
 
-// Close success modal
 function closeSuccessModal() {
-    document.getElementById('successModal').style.display = 'none';
+  const successModal = document.getElementById('successModal');
+  if (successModal) {
+    successModal.style.display = 'none';
+  }
 }
 
-// Employee form submission (free registration)
-document.getElementById('employeeForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const submitBtn = document.getElementById('employeeSubmitBtn');
-    const originalText = submitBtn.textContent;
-    
-    // Validate form
-    const formData = new FormData(this);
+function openModal() {
+  const consentModal = document.getElementById('consentModal');
+  if (consentModal) {
+    consentModal.style.display = 'flex';
+  }
+}
+
+function closeModal() {
+  const consentModal = document.getElementById('consentModal');
+  if (consentModal) {
+    consentModal.style.display = 'none';
+  }
+}
+
+// Form validation functions
+function validateEmail(email) {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+function validatePhoneNumber(phone) {
+  const phoneRegex = /^(\+91|91)?[6-9]\d{9}$/;
+  return phoneRegex.test(phone.replace(/\s+/g, ''));
+}
+
+function validateEmployeeForm(data) {
+  const errors = [];
+
+  if (!data.name?.trim()) errors.push('Name is required');
+  if (!data.email?.trim()) errors.push('Email is required');
+  if (!data.contact_no?.trim()) errors.push('Contact number is required');
+  if (!data.joining_company?.trim()) errors.push('Joining company is required');
+  if (!data.joining_date?.trim()) errors.push('Joining date is required');
+  if (!data.position?.trim()) errors.push('Position is required');
+
+  if (data.email && !validateEmail(data.email)) {
+    errors.push('Please enter a valid email address');
+  }
+
+  if (data.contact_no && !validatePhoneNumber(data.contact_no)) {
+    errors.push('Please enter a valid Indian phone number');
+  }
+
+  if (data.alternate_no && data.alternate_no.trim() && !validatePhoneNumber(data.alternate_no)) {
+    errors.push('Please enter a valid alternate phone number');
+  }
+
+  return errors;
+}
+
+function validateEmployerForm(data) {
+  const errors = [];
+
+  if (!data.name?.trim()) errors.push('Name is required');
+  if (!data.company_name?.trim()) errors.push('Company name is required');
+  if (!data.business_email?.trim()) errors.push('Business email is required');
+  if (!data.business_number?.trim()) errors.push('Business number is required');
+  if (!data.location?.trim()) errors.push('Location is required');
+  if (!data.designation?.trim()) errors.push('Designation is required');
+  if (!data.company_size || data.company_size < 1) errors.push('Valid company size is required');
+
+  if (data.business_email && !validateEmail(data.business_email)) {
+    errors.push('Please enter a valid business email address');
+  }
+
+  if (data.business_number && !validatePhoneNumber(data.business_number)) {
+    errors.push('Please enter a valid Indian business phone number');
+  }
+
+  return errors;
+}
+
+// Employee form submission
+async function handleEmployeeFormSubmit(e) {
+  e.preventDefault();
+  
+  const submitBtn = document.getElementById('employeeSubmitBtn');
+  const originalText = submitBtn?.textContent || 'Register Employee';
+  
+  if (!submitBtn) {
+    console.error('Submit button not found');
+    return;
+  }
+
+  try {
+    // Get form data
+    const formData = new FormData(e.target);
     const employeeData = Object.fromEntries(formData.entries());
-    
-    // Basic validation
-    if (!employeeData.name || !employeeData.email || !employeeData.contact_no) {
-        alert('Please fill in all required fields');
-        return;
+
+    console.log('Employee form data:', employeeData);
+
+    // Validate form
+    const validationErrors = validateEmployeeForm(employeeData);
+    if (validationErrors.length > 0) {
+      showMessage('Please fix the following errors:<br>• ' + validationErrors.join('<br>• '), 'error');
+      return;
     }
-    
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(employeeData.email)) {
-        alert('Please enter a valid email address');
-        return;
+
+    // Check consent
+    const consentCheckbox = document.getElementById('employeeConsent');
+    if (!consentCheckbox?.checked) {
+      showMessage('Please agree to the consent letter before proceeding', 'error');
+      return;
     }
-    
-    // Validate phone number
-    const phoneRegex = /^(\+91|91)?[6-9]\d{9}$/;
-    if (!phoneRegex.test(employeeData.contact_no.replace(/\s+/g, ''))) {
-        alert('Please enter a valid Indian phone number');
-        return;
-    }
-    
+
+    // Disable button and show loading
     submitBtn.disabled = true;
     submitBtn.textContent = 'Registering...';
     showLoading('Registering employee...');
-    
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/register-employee`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(employeeData)
-        });
-        
-        const result = await response.json();
-        
-        hideLoading();
-        
-        if (result.success) {
-            showSuccess(`
-                <div class="success-message">
-                    <h3>Registration Successful!</h3>
-                    <p>Employee registered successfully. A confirmation email has been sent to ${employeeData.email}.</p>
-                    <p><strong>Employee ID:</strong> ${result.employeeId}</p>
-                </div>
-            `);
-            this.reset();
-        } else {
-            alert('Registration failed: ' + result.message);
-        }
-    } catch (error) {
-        hideLoading();
-        console.error('Error:', error);
-        alert('Registration failed. Please check your internet connection and try again.');
-    } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = originalText;
-    }
-});
 
-// Employer form submission (opens Razorpay payment)
-document.getElementById('employerForm').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const submitBtn = document.getElementById('employerSubmitBtn');
-    const originalText = submitBtn.textContent;
-    
-    // Validate form
-    const formData = new FormData(this);
+    // Make API call
+    const result = await makeAPICall(`${API_BASE_URL}/api/register-employee`, {
+      method: 'POST',
+      body: JSON.stringify(employeeData)
+    });
+
+    hideLoading();
+
+    if (result.success) {
+      showSuccess(`
+        <div class="success-message">
+          <h3>Registration Successful!</h3>
+          <p>Employee registered successfully. A confirmation email has been sent to ${employeeData.email}.</p>
+          <p><strong>Employee ID:</strong> ${result.employeeId || 'N/A'}</p>
+        </div>
+      `);
+      
+      // Reset form
+      e.target.reset();
+      if (consentCheckbox) consentCheckbox.checked = false;
+    } else {
+      showMessage('Registration failed: ' + (result.message || 'Unknown error'), 'error');
+    }
+
+  } catch (error) {
+    hideLoading();
+    console.error('Employee registration error:', error);
+    showMessage('Registration failed: ' + error.message, 'error');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
+    }
+  }
+}
+
+// Employer form submission
+async function handleEmployerFormSubmit(e) {
+  e.preventDefault();
+  
+  const submitBtn = document.getElementById('employerSubmitBtn');
+  const originalText = submitBtn?.textContent || 'Register & Pay ₹999';
+  
+  if (!submitBtn) {
+    console.error('Submit button not found');
+    return;
+  }
+
+  try {
+    // Get form data
+    const formData = new FormData(e.target);
     employerFormData = Object.fromEntries(formData.entries());
-    
-    // Basic validation
-    if (!employerFormData.name || !employerFormData.company_name || !employerFormData.business_email || !employerFormData.business_number) {
-        alert('Please fill in all required fields');
-        return;
+
+    console.log('Employer form data:', employerFormData);
+
+    // Validate form
+    const validationErrors = validateEmployerForm(employerFormData);
+    if (validationErrors.length > 0) {
+      showMessage('Please fix the following errors:<br>• ' + validationErrors.join('<br>• '), 'error');
+      return;
     }
-    
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(employerFormData.business_email)) {
-        alert('Please enter a valid business email address');
-        return;
-    }
-    
-    // Validate phone number
-    const phoneRegex = /^(\+91|91)?[6-9]\d{9}$/;
-    if (!phoneRegex.test(employerFormData.business_number.replace(/\s+/g, ''))) {
-        alert('Please enter a valid Indian business phone number');
-        return;
-    }
-    
-    // Validate company size
-    if (!employerFormData.company_size || employerFormData.company_size < 1) {
-        alert('Please enter a valid company size');
-        return;
-    }
-    
+
+    // Disable button and show loading
     submitBtn.disabled = true;
     submitBtn.textContent = 'Processing...';
     showLoading('Creating payment order...');
-    
-    try {
-        // Create Razorpay order
-        const orderResponse = await fetch(`${API_BASE_URL}/api/employer/create-order`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(employerFormData)
-        });
-        
-        const orderData = await orderResponse.json();
-        
-        hideLoading();
-        
-        if (!orderData.success) {
-            throw new Error(orderData.message || 'Failed to create payment order');
-        }
-        
-        // Initialize Razorpay payment with all options
-        initiateRazorpayPayment(orderData);
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Error:', error);
-        alert('Failed to initiate payment: ' + error.message);
-    } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = originalText;
-    }
-});
 
-// Initialize Razorpay payment with all payment options
-function initiateRazorpayPayment(orderData) {
-    const options = {
-        key: orderData.key, // Replace with your actual Razorpay key
-        amount: orderData.amount,
-        currency: orderData.currency,
-        name: 'Nexsphere Global',
-        description: 'Employer Registration Fee',
-        image: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiMzMDdkNzMiLz4KPHRleHQgeD0iNTAiIHk9IjUwIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+TlM8L3RleHQ+Cjwvc3ZnPg==',
-        order_id: orderData.orderId,
-        handler: function(response) {
-            handlePaymentSuccess(response);
-        },
-        prefill: {
-            name: employerFormData.name,
-            email: employerFormData.business_email,
-            contact: employerFormData.business_number.replace(/\D/g, '').slice(-10) // Last 10 digits
-        },
-        theme: {
-            color: '#307d73'
-        },
-        method: {
-            upi: true,
-            card: true,
-            netbanking: true,
-            wallet: true,
-            paylater: true
-        },
-        config: {
-            display: {
-                blocks: {
-                    banks: {
-                        name: 'Pay using NetBanking',
-                        instruments: [
-                            {
-                                method: 'netbanking',
-                                banks: ['HDFC', 'ICICI', 'SBI', 'AXIS', 'KOTAK', 'INDUSIND', 'YES', 'PNB']
-                            }
-                        ]
-                    },
-                    utib: {
-                        name: 'Pay using UPI',
-                        instruments: [
-                            {
-                                method: 'upi'
-                            }
-                        ]
-                    }
-                },
-                sequence: ['block.utib', 'block.banks', 'block.other'],
-                preferences: {
-                    show_default_blocks: true
-                }
-            }
-        },
-        modal: {
-            ondismiss: function() {
-                document.getElementById('employerSubmitBtn').disabled = false;
-                document.getElementById('employerSubmitBtn').textContent = 'Register & Pay ₹999';
-            }
-        }
-    };
+    // Create payment order
+    const orderData = await makeAPICall(`${API_BASE_URL}/api/employer/create-order`, {
+      method: 'POST',
+      body: JSON.stringify(employerFormData)
+    });
+
+    hideLoading();
+
+    if (!orderData.success) {
+      throw new Error(orderData.message || 'Failed to create payment order');
+    }
+
+    // Initialize Razorpay payment
+    initiateRazorpayPayment(orderData);
+
+  } catch (error) {
+    hideLoading();
+    console.error('Employer form error:', error);
+    showMessage('Failed to initiate payment: ' + error.message, 'error');
     
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
+    }
+  }
+}
+
+// Initialize Razorpay payment
+function initiateRazorpayPayment(orderData) {
+  // Check if Razorpay is loaded
+  if (typeof Razorpay === 'undefined') {
+    showMessage('Payment gateway not loaded. Please refresh the page and try again.', 'error');
+    return;
+  }
+
+  const options = {
+    key: orderData.key,
+    amount: orderData.amount,
+    currency: orderData.currency || 'INR',
+    name: 'Nexsphere Global',
+    description: 'Employer Registration Fee',
+    order_id: orderData.orderId,
+    handler: function(response) {
+      handlePaymentSuccess(response);
+    },
+    prefill: {
+      name: employerFormData.name,
+      email: employerFormData.business_email,
+      contact: employerFormData.business_number?.replace(/\D/g, '').slice(-10) || ''
+    },
+    theme: {
+      color: '#307d73'
+    },
+    method: {
+      upi: true,
+      card: true,
+      netbanking: true,
+      wallet: true,
+      paylater: true
+    },
+    modal: {
+      ondismiss: function() {
+        const submitBtn = document.getElementById('employerSubmitBtn');
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Register & Pay ₹999';
+        }
+        showMessage('Payment was cancelled', 'info');
+      }
+    }
+  };
+
+  console.log('Razorpay options:', options);
+
+  try {
     const rzp = new Razorpay(options);
     
     rzp.on('payment.failed', function(response) {
-        handlePaymentFailure(response.error);
+      console.error('Payment failed:', response);
+      handlePaymentFailure(response.error);
     });
     
     rzp.open();
+  } catch (error) {
+    console.error('Error opening Razorpay:', error);
+    showMessage('Failed to open payment gateway: ' + error.message, 'error');
+  }
 }
 
 // Handle successful payment
 async function handlePaymentSuccess(response) {
-    showLoading('Verifying payment and completing registration...');
-    
-    try {
-        const registrationData = {
-            ...employerFormData,
-            razorpay_order_id: response.razorpay_order_id,
-            razorpay_payment_id: response.razorpay_payment_id,
-            razorpay_signature: response.razorpay_signature
-        };
-        
-        const registerResponse = await fetch(`${API_BASE_URL}/api/employer/register`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(registrationData)
-        });
-        
-        const result = await registerResponse.json();
-        
-        hideLoading();
-        
-        if (result.success) {
-            showSuccess(`
-                <div class="success-message">
-                    <h3>Registration Successful!</h3>
-                    <p>Your employer account has been created successfully.</p>
-                    <p><strong>Company:</strong> ${employerFormData.company_name}</p>
-                    <p><strong>Payment ID:</strong> ${result.paymentId}</p>
-                    <p><strong>Employer ID:</strong> ${result.employerId}</p>
-                    <p>A confirmation email has been sent to ${employerFormData.business_email}</p>
-                </div>
-            `);
-            
-            // Reset form after successful registration
-            document.getElementById('employerForm').reset();
-            
-        } else {
-            alert('Registration failed: ' + result.message);
-        }
-        
-    } catch (error) {
-        hideLoading();
-        console.error('Registration error:', error);
-        alert('Registration failed. Please contact support.');
-    } finally {
-        document.getElementById('employerSubmitBtn').disabled = false;
-        document.getElementById('employerSubmitBtn').textContent = 'Register & Pay ₹999';
+  showLoading('Verifying payment and completing registration...');
+  
+  try {
+    const registrationData = {
+      ...employerFormData,
+      razorpay_order_id: response.razorpay_order_id,
+      razorpay_payment_id: response.razorpay_payment_id,
+      razorpay_signature: response.razorpay_signature
+    };
+
+    console.log('Payment success data:', registrationData);
+
+    const result = await makeAPICall(`${API_BASE_URL}api/employer/register`, {
+      method: 'POST',
+      body: JSON.stringify(registrationData)
+    });
+
+    hideLoading();
+
+    if (result.success) {
+      showSuccess(`
+        <div class="success-message">
+          <h3>Registration Successful!</h3>
+          <p>Your employer account has been created successfully.</p>
+          <p><strong>Company:</strong> ${employerFormData.company_name}</p>
+          <p><strong>Payment ID:</strong> ${result.paymentId || response.razorpay_payment_id}</p>
+          <p><strong>Employer ID:</strong> ${result.employerId || 'N/A'}</p>
+          <p>A confirmation email has been sent to ${employerFormData.business_email}</p>
+        </div>
+      `);
+
+      // Reset form
+      const employerForm = document.getElementById('employerForm');
+      if (employerForm) {
+        employerForm.reset();
+      }
+      employerFormData = {};
+
+    } else {
+      showMessage('Registration failed: ' + (result.message || 'Unknown error'), 'error');
     }
+
+  } catch (error) {
+    hideLoading();
+    console.error('Registration error:', error);
+    showMessage('Registration failed: ' + error.message, 'error');
+  } finally {
+    const submitBtn = document.getElementById('employerSubmitBtn');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Register & Pay ₹999';
+    }
+  }
 }
 
 // Handle payment failure
 function handlePaymentFailure(error) {
-    console.error('Payment failed:', error);
-    
-    let errorMessage = 'Payment failed. Please try again.';
-    
-    if (error.code) {
-        switch (error.code) {
-            case 'BAD_REQUEST_ERROR':
-                errorMessage = 'Invalid payment request. Please try again.';
-                break;
-            case 'GATEWAY_ERROR':
-                errorMessage = 'Payment gateway error. Please try again.';
-                break;
-            case 'NETWORK_ERROR':
-                errorMessage = 'Network error. Please check your connection.';
-                break;
-            case 'SERVER_ERROR':
-                errorMessage = 'Server error. Please try again later.';
-                break;
-            default:
-                errorMessage = error.description || errorMessage;
-        }
+  console.error('Payment failed:', error);
+
+  let errorMessage = 'Payment failed. Please try again.';
+
+  if (error?.code) {
+    switch (error.code) {
+      case 'BAD_REQUEST_ERROR':
+        errorMessage = 'Invalid payment request. Please try again.';
+        break;
+      case 'GATEWAY_ERROR':
+        errorMessage = 'Payment gateway error. Please try again.';
+        break;
+      case 'NETWORK_ERROR':
+        errorMessage = 'Network error. Please check your connection.';
+        break;
+      case 'SERVER_ERROR':
+        errorMessage = 'Server error. Please try again later.';
+        break;
+      default:
+        errorMessage = error.description || error.reason || errorMessage;
     }
-    
-    alert(errorMessage);
-    
-    document.getElementById('employerSubmitBtn').disabled = false;
-    document.getElementById('employerSubmitBtn').textContent = 'Register & Pay ₹999';
+  }
+
+  showMessage(errorMessage, 'error');
+
+  const submitBtn = document.getElementById('employerSubmitBtn');
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Register & Pay ₹999';
+  }
 }
 
-// Modal functions
-function openModal() {
-    document.getElementById('consentModal').style.display = 'flex';
-}
+// Input validation on change
+function initializeInputValidation() {
+  // Email validation
+  document.querySelectorAll('input[type="email"]').forEach(input => {
+    input.addEventListener('blur', function() {
+      if (this.value && !validateEmail(this.value)) {
+        this.style.borderColor = '#dc3545';
+        this.title = 'Please enter a valid email address';
+      } else {
+        this.style.borderColor = '#ccc';
+        this.title = '';
+      }
+    });
+  });
 
-function closeModal() {
-    document.getElementById('consentModal').style.display = 'none';
+  // Phone number validation
+  document.querySelectorAll('input[type="tel"]').forEach(input => {
+    input.addEventListener('input', function() {
+      // Allow only numbers, +, and spaces
+      this.value = this.value.replace(/[^+\d\s]/g, '');
+    });
+
+    input.addEventListener('blur', function() {
+      if (this.value && !validatePhoneNumber(this.value)) {
+        this.style.borderColor = '#dc3545';
+        this.title = 'Please enter a valid Indian phone number';
+      } else {
+        this.style.borderColor = '#ccc';
+        this.title = '';
+      }
+    });
+  });
+
+  // Company size validation
+  const companySizeInput = document.querySelector('input[name="company_size"]');
+  if (companySizeInput) {
+    companySizeInput.addEventListener('input', function() {
+      if (this.value < 1) {
+        this.value = 1;
+      }
+    });
+  }
 }
 
 // Close modals when clicking outside
-window.onclick = function(event) {
+function initializeModalHandlers() {
+  window.addEventListener('click', function(event) {
     const consentModal = document.getElementById('consentModal');
-    const loadingModal = document.getElementById('loadingModal');
     const successModal = document.getElementById('successModal');
-    
+
     if (event.target === consentModal) {
-        closeModal();
+      closeModal();
     }
     if (event.target === successModal) {
-        closeSuccessModal();
+      closeSuccessModal();
     }
-    // Don't allow closing loading modal by clicking outside
+    // Note: Don't allow closing loading modal by clicking outside
+  });
+
+  // Add close button handlers
+  document.addEventListener('click', function(event) {
+    if (event.target.classList.contains('close')) {
+      const modal = event.target.closest('.modal');
+      if (modal) {
+        modal.style.display = 'none';
+      }
+    }
+  });
 }
 
-// Validate form inputs on change
-document.addEventListener('DOMContentLoaded', function() {
-    // Email validation
-    document.querySelectorAll('input[type="email"]').forEach(input => {
-        input.addEventListener('blur', function() {
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (this.value && !emailRegex.test(this.value)) {
-                this.style.borderColor = '#dc3545';
-                this.title = 'Please enter a valid email address';
-            } else {
-                this.style.borderColor = '#ccc';
-                this.title = '';
-            }
-        });
-    });
-    
-    // Phone number validation
-    document.querySelectorAll('input[type="tel"]').forEach(input => {
-        input.addEventListener('input', function() {
-            // Allow only numbers, +, and spaces
-            this.value = this.value.replace(/[^+\d\s]/g, '');
-        });
-        
-        input.addEventListener('blur', function() {
-            const phoneRegex = /^(\+91|91)?[6-9]\d{9}$/;
-            const cleanPhone = this.value.replace(/\s+/g, '');
-            if (this.value && !phoneRegex.test(cleanPhone)) {
-                this.style.borderColor = '#dc3545';
-                this.title = 'Please enter a valid Indian phone number';
-            } else {
-                this.style.borderColor = '#ccc';
-                this.title = '';
-            }
-        });
-    });
-    
-    // Company size validation
-    document.querySelector('input[name="company_size"]').addEventListener('input', function() {
-        if (this.value < 1) {
-            this.value = 1;
-        }
-    });
-});
+// Form auto-save functionality (optional)
+function initializeAutoSave() {
+  function saveFormData() {
+    try {
+      const employeeForm = document.getElementById('employeeForm');
+      const employerForm = document.getElementById('employerForm');
 
-// Add form auto-save functionality
-function saveFormData() {
-    const employeeForm = document.getElementById('employeeForm');
-    const employerForm = document.getElementById('employerForm');
-    
-    if (employeeForm.style.display !== 'none') {
+      if (employeeForm && employeeForm.style.display !== 'none') {
         const formData = new FormData(employeeForm);
         const data = Object.fromEntries(formData.entries());
-        localStorage.setItem('employeeFormData', JSON.stringify(data));
-    }
-    
-    if (employerForm.style.display !== 'none') {
+        sessionStorage.setItem('employeeFormData', JSON.stringify(data));
+      }
+
+      if (employerForm && employerForm.style.display !== 'none') {
         const formData = new FormData(employerForm);
         const data = Object.fromEntries(formData.entries());
-        localStorage.setItem('employerFormData', JSON.stringify(data));
+        sessionStorage.setItem('employerFormData', JSON.stringify(data));
+      }
+    } catch (error) {
+      console.warn('Auto-save failed:', error);
     }
-}
+  }
 
-// Load saved form data
-function loadSavedFormData() {
-    const savedEmployeeData = localStorage.getItem('employeeFormData');
-    const savedEmployerData = localStorage.getItem('employerFormData');
-    
-    if (savedEmployeeData) {
+  function loadSavedFormData() {
+    try {
+      const savedEmployeeData = sessionStorage.getItem('employeeFormData');
+      const savedEmployerData = sessionStorage.getItem('employerFormData');
+
+      if (savedEmployeeData) {
         const data = JSON.parse(savedEmployeeData);
         Object.keys(data).forEach(key => {
-            const input = document.querySelector(`#employeeForm input[name="${key}"]`);
-            if (input) input.value = data[key];
+          const input = document.querySelector(`#employeeForm input[name="${key}"]`);
+          if (input && data[key]) input.value = data[key];
         });
+      }
+
+      if (savedEmployerData) {
+        const data = JSON.parse(savedEmployerData);
+        Object.keys(data).forEach(key => {
+          const input = document.querySelector(`#employerForm input[name="${key}"]`);
+          if (input && data[key]) input.value = data[key];
+        });
+      }
+    } catch (error) {
+      console.warn('Auto-load failed:', error);
     }
+  }
+
+  // Auto-save on input
+  document.addEventListener('input', debounce(saveFormData, 1000));
+  
+  // Load saved data on page load
+  loadSavedFormData();
 }
+
+// Debounce function for auto-save
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Initialize everything when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('DOM loaded, initializing application...');
+
+  // Test server connection
+  testServerConnection();
+
+  // Initialize all components
+  initializeRoleSelection();
+  initializeInputValidation();
+  initializeModalHandlers();
+  initializeAutoSave();
+
+  // Attach form event listeners
+  const employeeForm = document.getElementById('employeeForm');
+  const employerForm = document.getElementById('employerForm');
+
+  if (employeeForm) {
+    employeeForm.addEventListener('submit', handleEmployeeFormSubmit);
+  } else {
+    console.warn('Employee form not found');
+  }
+
+  if (employerForm) {
+    employerForm.addEventListener('submit', handleEmployerFormSubmit);
+  } else {
+    console.warn('Employer form not found');
+  }
+
+  console.log('Application initialization complete');
+});
+
+// Global error handler
+window.addEventListener('error', function(event) {
+  console.error('Global error:', event.error);
+  showMessage('An unexpected error occurred. Please refresh the page and try again.', 'error');
+});
+
+// Expose functions to global scope for modal buttons
+window.openModal = openModal;
+window.closeModal = closeModal;
+window.closeSuccessModal = closeSuccessModal;
