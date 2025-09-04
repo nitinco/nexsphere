@@ -488,79 +488,60 @@
             loginBtn.textContent = 'Signing in...';
             
             try {
-                // Try multiple possible login endpoints
-                const loginEndpoints = [
-                    `${API_BASE_URL}/api/hr/login`,
-                    `${API_BASE_URL}/api/auth/login`,
-                    `${API_BASE_URL}/api/login`,
-                    `${API_BASE_URL}/login`
-                ];
-
-                let loginSuccess = false;
-                let lastError = null;
-
-                for (const endpoint of loginEndpoints) {
-                    try {
-                        const response = await fetch(endpoint, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({ email, password }),
-                        });
-                        
-                        // If endpoint doesn't exist, try next one
-                        if (response.status === 404) {
-                            continue;
-                        }
-
-                        const data = await response.json();
-                        
-                        if (response.ok && data.success && data.token) {
-                            // Store authentication data
-                            sessionStorage.setItem('authToken', data.token);
-                            sessionStorage.setItem('userInfo', JSON.stringify({
-                                id: data.user?.id || 1,
-                                email: data.user?.email || email,
-                                name: data.user?.name || 'HR Manager',
-                                role: data.user?.role || 'HR Manager'
-                            }));
-                            
-                            // Handle "Remember Me" functionality
-                            if (rememberMe) {
-                                localStorage.setItem('hr_remembered_email', email);
-                                localStorage.setItem('hr_remembered_password', password);
-                            } else {
-                                localStorage.removeItem('hr_remembered_email');
-                                localStorage.removeItem('hr_remembered_password');
-                            }
-                            
-                            showMessage('success', 'Login successful! Redirecting to dashboard...');
-                            loginSuccess = true;
-                            
-                            // Redirect to dashboard
-                            setTimeout(() => {
-                                window.location.href = 'dashboard.html';
-                            }, 1500);
-                            
-                            break;
-                        } else {
-                            lastError = data.error || data.message || 'Login failed. Please check your credentials.';
-                        }
-                        
-                    } catch (fetchError) {
-                        lastError = fetchError;
-                        continue;
-                    }
+                // Make API call to backend
+                const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email, password }),
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Server responded with status ${response.status}`);
                 }
 
-                if (!loginSuccess) {
-                    showMessage('error', lastError || 'Login failed. Please check your credentials and ensure the server is available.');
+                const data = await response.json();
+                
+                if (data.success && data.token) {
+                    // Store authentication data
+                    sessionStorage.setItem('authToken', data.token);
+                    sessionStorage.setItem('userInfo', JSON.stringify({
+                        id: data.user?.id || 1,
+                        email: data.user?.email || email,
+                        name: data.user?.name || 'HR Manager',
+                        role: data.user?.role || 'HR Manager'
+                    }));
+                    
+                    // Handle "Remember Me" functionality
+                    if (rememberMe) {
+                        localStorage.setItem('hr_remembered_email', email);
+                        localStorage.setItem('hr_remembered_password', password);
+                    } else {
+                        localStorage.removeItem('hr_remembered_email');
+                        localStorage.removeItem('hr_remembered_password');
+                    }
+                    
+                    showMessage('success', 'Login successful! Redirecting to dashboard...');
+                    
+                    // Redirect to dashboard
+                    setTimeout(() => {
+                        window.location.href = 'dashboard.html';
+                    }, 1500);
+                    
+                } else {
+                    showMessage('error', data.error || data.message || 'Login failed. Please check your credentials.');
                 }
                 
             } catch (error) {
                 console.error('Login error:', error);
-                showMessage('error', 'Network error. Please check your connection or try again later.');
+                if (error.message.includes('404')) {
+                    showMessage('error', 'Login endpoint not found. Please contact support or check if the API server is properly configured.');
+                } else if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                    showMessage('error', 'Cannot connect to server. Please check your network connection.');
+                } else {
+                    showMessage('error', 'Login failed: ' + (error.message || 'Unknown error'));
+                }
             } finally {
                 // Re-enable button
                 loginBtn.disabled = false;
