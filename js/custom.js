@@ -64,8 +64,11 @@
 })(window.jQuery);
 
 // API Configuration
-const API_BASE_URL = 'https://api.nexsphereglobal.com/';
+const API_BASE_URL = 'https://api.nexsphereglobal.com'; 
 let employerFormData = {};
+
+// Feature flag to control API calls
+const API_ENABLED = false; // Set to true when backend is ready
 
 // Utility Functions
 function showMessage(message, type = 'info') {
@@ -150,23 +153,10 @@ async function makeAPICall(url, options = {}) {
     console.error('API call error:', error);
     
     if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-      throw new Error('Cannot connect to server. Please ensure the server is running on http://localhost:3000');
+      throw new Error('Cannot connect to server. Please ensure the server is running.');
     }
     
     throw error;
-  }
-}
-
-// Test server connection
-async function testServerConnection() {
-  try {
-    const response = await makeAPICall(`${API_BASE_URL}/api/test`);
-    console.log('Server test successful:', response);
-    return true;
-  } catch (error) {
-    console.error('Server connection test failed:', error);
-    showMessage(`Server connection failed: ${error.message}`, 'error');
-    return false;
   }
 }
 
@@ -334,6 +324,12 @@ async function handleEmployeeFormSubmit(e) {
       return;
     }
 
+    // Check if API is enabled
+    if (!API_ENABLED) {
+      showMessage('Employee registration is currently being set up. Please check back soon!', 'info');
+      return;
+    }
+
     // Disable button and show loading
     submitBtn.disabled = true;
     submitBtn.textContent = 'Registering...';
@@ -398,6 +394,12 @@ async function handleEmployerFormSubmit(e) {
     const validationErrors = validateEmployerForm(employerFormData);
     if (validationErrors.length > 0) {
       showMessage('Please fix the following errors:<br>• ' + validationErrors.join('<br>• '), 'error');
+      return;
+    }
+
+    // Check if API is enabled
+    if (!API_ENABLED) {
+      showMessage('Employer registration is currently being set up. Please check back soon!', 'info');
       return;
     }
 
@@ -509,7 +511,7 @@ async function handlePaymentSuccess(response) {
 
     console.log('Payment success data:', registrationData);
 
-    const result = await makeAPICall(`${API_BASE_URL}api/employer/register`, {
+    const result = await makeAPICall(`${API_BASE_URL}/api/employer/register`, {
       method: 'POST',
       body: JSON.stringify(registrationData)
     });
@@ -728,9 +730,6 @@ function debounce(func, wait) {
 document.addEventListener('DOMContentLoaded', function() {
   console.log('DOM loaded, initializing application...');
 
-  // Test server connection
-  testServerConnection();
-
   // Initialize all components
   initializeRoleSelection();
   initializeInputValidation();
@@ -744,13 +743,13 @@ document.addEventListener('DOMContentLoaded', function() {
   if (employeeForm) {
     employeeForm.addEventListener('submit', handleEmployeeFormSubmit);
   } else {
-    console.warn('Employee form not found');
+    console.warn('Employee form not found - make sure your HTML has an element with id="employeeForm"');
   }
 
   if (employerForm) {
     employerForm.addEventListener('submit', handleEmployerFormSubmit);
   } else {
-    console.warn('Employer form not found');
+    console.warn('Employer form not found - make sure your HTML has an element with id="employerForm"');
   }
 
   console.log('Application initialization complete');
