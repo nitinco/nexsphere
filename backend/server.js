@@ -18,102 +18,219 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 const port = process.env.PORT || 3000;
 const app = express();
 
+// CORS configuration - Fixed to be more permissive for development
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or Postman)
+        if (!origin) return callback(null, true);
+        
+        const allowedOrigins = [
+            'http://localhost:3000',
+            'http://127.0.0.1:3000', 
+            'http://localhost:5500',
+            'http://127.0.0.1:5500',
+            'http://localhost:8080',
+            'http://127.0.0.1:8080',
+            'http://nexsphereglobal.com',
+            'https://nexsphereglobal.com',
+            'https://www.nexsphereglobal.com',
+            'https://api.nexsphereglobal.com'
+        ];
+        
+        if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-requested-with'],
+    preflightContinue: false,
+    optionsSuccessStatus: 200
+}));
+
+// Handle preflight requests
+app.options('*', cors());
+
 // Middleware
 app.use(helmet({
-    contentSecurityPolicy: false // Disable CSP for local development
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
 }));
 
-app.use(cors({
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost:5500', 'http://127.0.0.1:5500'],
-    credentials: true,      
-}));
-
-// Rate limiter
+// Rate limiter - Made more lenient for development
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
-    message: 'Too many requests from this IP, please try again later.'
+    max: 200, // Increased limit for development
+    message: { error: 'Too many requests from this IP, please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => {
+        // Skip rate limiting in development
+        return process.env.NODE_ENV === 'development';
+    }
 });
-app.use(limiter);
+app.use('/api/', limiter);
 
-// Body parser middleware
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+// Body parser middleware - Increased limits
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve static files (for HTML, CSS, JS)
+// Request logging middleware for debugging
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+    if (req.body && Object.keys(req.body).length > 0) {
+        console.log('Request body:', req.body);
+    }
+    next();
+});
+
+// Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Database configuration
+// Database configuration with better error handling
 const dbConfig = {
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'nexsphere_hr',
+    connectTimeout: 60000,
 };
 
 // JWT secret key
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here';
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here-change-in-production';
 
-// Razorpay instance - Fixed initialization
-const razorpayInstance = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_your_key_id',
-    key_secret: process.env.RAZORPAY_KEY_SECRET || 'your_key_secret',
-});
+// Razorpay instance with validation
+let razorpayInstance = null;
+try {
+    if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+        razorpayInstance = new Razorpay({
+            key_id: process.env.RAZORPAY_KEY_ID,
+            key_secret: process.env.RAZORPAY_KEY_SECRET,
+        });
+        console.log('Razorpay configured successfully');
+    } else {
+        console.warn('Razorpay credentials not found in environment variables');
+    }
+} catch (error) {
+    console.error('Error initializing Razorpay:', error);
+}
 
-// Email transporter setup
-const emailTransporter = nodeMailer.createTransport({
-    service: 'Gmail',
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD,
-    },
-});
+// Email transporter setup with validation
+let emailTransporter = null;
+try {
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
+        emailTransporter = nodeMailer.createTransport({
+            service: 'Gmail',
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASSWORD,
+            },
+        });
+        console.log('Email transporter configured successfully');
+    } else {
+        console.warn('Email credentials not found in environment variables');
+    }
+} catch (error) {
+    console.error('Error initializing email transporter:', error);
+}
 
-// Middleware to verify JWT token
+// Database connection helper with retry logic
+async function createDatabaseConnection() {
+    let retries = 3;
+    while (retries > 0) {
+        try {
+            const connection = await mysql.createConnection(dbConfig);
+            return connection;
+        } catch (error) {
+            retries--;
+            console.error(`Database connection attempt failed (${3 - retries}/3):`, error.message);
+            if (retries === 0) throw error;
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+    }
+}
+
+// Improved JWT middleware
 const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-    
-    if (token == null) return res.sendStatus(401);
+    try {
+        const authHeader = req.headers['authorization'];
+        const token = authHeader && authHeader.split(' ')[1];
+        
+        if (!token) {
+            return res.status(401).json({ 
+                success: false, 
+                error: "Access token is required",
+                message: "Please provide a valid authorization token"
+            });
+        }
 
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) return res.status(403).json({error: "Invalid token"});
-        req.user = user;
-        next();
-    });
+        jwt.verify(token, JWT_SECRET, (err, user) => {
+            if (err) {
+                console.error('JWT verification error:', err);
+                return res.status(403).json({ 
+                    success: false, 
+                    error: "Invalid or expired token",
+                    message: "Please login again"
+                });
+            }
+            req.user = user;
+            next();
+        });
+    } catch (error) {
+        console.error('Token authentication error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: "Authentication error",
+            message: "Internal server error"
+        });
+    }
 };
 
-// Test database connection
+// Test database connection on startup
 async function testConnection() {
     try {
-        const connection = await mysql.createConnection(dbConfig);
-        console.log('Connected to MySQL successfully');
+        const connection = await createDatabaseConnection();
+        console.log('✓ Connected to MySQL successfully');
+        await connection.ping();
         await connection.end();
+        return true;
     } catch (err) {
-        console.error('Error connecting to MySQL:', err);
+        console.error('✗ Error connecting to MySQL:', err);
         console.log('Please check your database configuration in .env file');
+        console.log('Required variables: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME');
+        return false;
     }
 }
 
 // Initialize connection test
-testConnection();
+testConnection().then(connected => {
+    if (!connected) {
+        console.warn('Starting server without database connection');
+    }
+});
 
-// HR login 
+// HR login with improved error handling
 app.post('/api/hr/login', async (req, res) => {
+    let connection;
     try {
-        const {email, password} = req.body;
+        const { email, password } = req.body;
         
         if (!email || !password) {
-            return res.status(400).json({error: 'Email and password are required'});
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Email and password are required' 
+            });
         }
         
-        const connection = await mysql.createConnection(dbConfig);
+        connection = await createDatabaseConnection();
         
-        // First check if hr_users table exists, if not create it with default user
+        // Create hr_users table if it doesn't exist
         try {
             await connection.execute('SELECT 1 FROM hr_users LIMIT 1');
         } catch (tableError) {
-            // Table doesn't exist, create it
+            console.log('Creating hr_users table...');
             await connection.execute(`
                 CREATE TABLE hr_users (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -131,35 +248,39 @@ app.post('/api/hr/login', async (req, res) => {
                 'INSERT INTO hr_users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
                 ['HR Manager', 'hr@nexspherehr.in', defaultPassword, 'HR Manager']
             );
-            console.log('Created hr_users table with default user');
+            console.log('✓ Created hr_users table with default user');
         }
         
         const [users] = await connection.execute(
             'SELECT * FROM hr_users WHERE email = ?',
             [email]
         );
-        await connection.end();
 
         if (users.length === 0) {
-            return res.status(400).json({error: 'Invalid email or password'});
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Invalid email or password' 
+            });
         }
 
         const user = users[0];
         const isPasswordValid = await bcryptjs.compare(password, user.password_hash);
         
         if (!isPasswordValid) {
-            return res.status(400).json({error: 'Invalid email or password'});
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Invalid email or password' 
+            });
         }
 
-        const token = jwt.sign({
-            id: user.id,
-            email: user.email,
-        }, 
-        JWT_SECRET,
-        {expiresIn: '24h'}
+        const token = jwt.sign(
+            { id: user.id, email: user.email },
+            JWT_SECRET,
+            { expiresIn: '24h' }
         );
         
         res.json({
+            success: true,
             message: 'Login successful',
             token: token,
             user: {
@@ -171,16 +292,22 @@ app.post('/api/hr/login', async (req, res) => {
         });
     } catch (error) {
         console.error('Error during HR login:', error);
-        res.status(500).json({error: 'Internal server error'});
+        res.status(500).json({ 
+            success: false, 
+            error: 'Internal server error',
+            message: error.message 
+        });
+    } finally {
+        if (connection) await connection.end();
     }
 });
 
-// Dashboard Stats API
+// Dashboard Stats API with better error handling
 app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
+    let connection;
     try {
-        const connection = await mysql.createConnection(dbConfig);
+        connection = await createDatabaseConnection();
         
-        // Initialize stats object
         let stats = {
             employees: { total: 0, active: 0 },
             employers: { total: 0, active: 0 },
@@ -188,70 +315,77 @@ app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
             emails: { employeeEmails: 0, employerEmails: 0, totalEmails: 0 }
         };
         
-        // Check if tables exist and get stats
-        try {
-            // Get employee stats
-            const [employeeStats] = await connection.execute(
-                'SELECT COUNT(*) as total, COUNT(CASE WHEN status = "active" THEN 1 END) as active FROM employees'
-            );
-            stats.employees = employeeStats[0];
-        } catch (err) {
-            console.log('Employees table may not exist yet');
-        }
-        
-        try {
-            // Get employer stats  
-            const [employerStats] = await connection.execute(
-                'SELECT COUNT(*) as total, COUNT(CASE WHEN status = "active" THEN 1 END) as active FROM employers'
-            );
-            stats.employers = employerStats[0];
-        } catch (err) {
-            console.log('Employers table may not exist yet');
-        }
-        
-        try {
-            // Get payment stats
-            const [paymentStats] = await connection.execute(
-                'SELECT COUNT(CASE WHEN payment_status = "paid" THEN 1 END) as successful, SUM(CASE WHEN payment_status = "paid" THEN amount ELSE 0 END) as totalRevenue FROM payments'
-            );
-            stats.payments = {
-                successful: paymentStats[0].successful || 0,
-                totalRevenue: paymentStats[0].totalRevenue || 0
-            };
-        } catch (err) {
-            console.log('Payments table may not exist yet');
+        // Check each table and get stats
+        const tables = [
+            {
+                name: 'employees',
+                query: 'SELECT COUNT(*) as total, COUNT(CASE WHEN status = "active" THEN 1 END) as active FROM employees',
+                key: 'employees'
+            },
+            {
+                name: 'employers',
+                query: 'SELECT COUNT(*) as total, COUNT(CASE WHEN status = "active" THEN 1 END) as active FROM employers',
+                key: 'employers'
+            },
+            {
+                name: 'payments',
+                query: 'SELECT COUNT(CASE WHEN payment_status = "paid" THEN 1 END) as successful, COALESCE(SUM(CASE WHEN payment_status = "paid" THEN amount ELSE 0 END), 0) as totalRevenue FROM payments',
+                key: 'payments'
+            }
+        ];
+
+        for (const table of tables) {
+            try {
+                const [result] = await connection.execute(table.query);
+                if (table.key === 'payments') {
+                    stats[table.key] = {
+                        successful: parseInt(result[0].successful) || 0,
+                        totalRevenue: parseFloat(result[0].totalRevenue) || 0
+                    };
+                } else {
+                    stats[table.key] = result[0];
+                }
+            } catch (err) {
+                console.log(`Table ${table.name} may not exist yet:`, err.message);
+            }
         }
 
-        // Email totals
+        // Email stats
         try {
             const [emailTotals] = await connection.execute(`
                 SELECT
-                  COUNT(*) AS totalEmails,
-                  SUM(CASE WHEN recipient_type = 'employee' AND status = 'sent' THEN 1 ELSE 0 END) AS employeeEmails,
-                  SUM(CASE WHEN recipient_type = 'employer' AND status = 'sent' THEN 1 ELSE 0 END) AS employerEmails
+                    COUNT(*) AS totalEmails,
+                    SUM(CASE WHEN recipient_type = 'employee' AND status = 'sent' THEN 1 ELSE 0 END) AS employeeEmails,
+                    SUM(CASE WHEN recipient_type = 'employer' AND status = 'sent' THEN 1 ELSE 0 END) AS employerEmails
                 FROM email_logs
                 WHERE status IN ('sent','failed')
             `);
 
             stats.emails = {
-                employeeEmails: emailTotals[0].employeeEmails || 0,
-                employerEmails: emailTotals[0].employerEmails || 0,
-                totalEmails: emailTotals[0].totalEmails || 0
+                employeeEmails: parseInt(emailTotals[0].employeeEmails) || 0,
+                employerEmails: parseInt(emailTotals[0].employerEmails) || 0,
+                totalEmails: parseInt(emailTotals[0].totalEmails) || 0
             };
         } catch (err) {
-            console.log('Email logs table may not exist yet');
+            console.log('Email logs table may not exist yet:', err.message);
         }
 
-        await connection.end();
         res.json({ success: true, stats });
     } catch (error) {
         console.error('Error fetching stats:', error);
-        res.status(500).json({ success: false, message: 'Internal server error' });
+        res.status(500).json({ 
+            success: false, 
+            message: 'Internal server error',
+            error: error.message 
+        });
+    } finally {
+        if (connection) await connection.end();
     }
 });
 
-// Get Employees API
+// Fixed Get Employees API
 app.get('/api/employees', authenticateToken, async (req, res) => {
+    let connection;
     try {
         const { status } = req.query;
         let query = 'SELECT * FROM employees';
@@ -264,33 +398,44 @@ app.get('/api/employees', authenticateToken, async (req, res) => {
         
         query += ' ORDER BY id DESC';
         
-        const connection = await mysql.createConnection(dbConfig);
+        connection = await createDatabaseConnection();
         
         try {
             const [employees] = await connection.execute(query, params);
-            await connection.end();
-            
             res.json({
                 success: true,
-                employees: employees
+                employees: employees,
+                count: employees.length
             });
         } catch (tableError) {
-            await connection.end();
-            // Table doesn't exist yet
-            res.json({
-                success: true,
-                employees: []
-            });
+            if (tableError.code === 'ER_NO_SUCH_TABLE') {
+                console.log('Employees table does not exist yet');
+                res.json({
+                    success: true,
+                    employees: [],
+                    count: 0,
+                    message: 'No employees table found'
+                });
+            } else {
+                throw tableError;
+            }
         }
         
     } catch (error) {
         console.error('Error fetching employees:', error);
-        res.status(500).json({ success: false, message: 'Error fetching employees' });
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error fetching employees',
+            error: error.message 
+        });
+    } finally {
+        if (connection) await connection.end();
     }
 });
 
-// Get Employers API
+// Fixed Get Employers API
 app.get('/api/employers', authenticateToken, async (req, res) => {
+    let connection;
     try {
         const { status } = req.query;
         let query = 'SELECT * FROM employers';
@@ -303,33 +448,44 @@ app.get('/api/employers', authenticateToken, async (req, res) => {
         
         query += ' ORDER BY id DESC';
         
-        const connection = await mysql.createConnection(dbConfig);
+        connection = await createDatabaseConnection();
         
         try {
             const [employers] = await connection.execute(query, params);
-            await connection.end();
-            
             res.json({
                 success: true,
-                employers: employers
+                employers: employers,
+                count: employers.length
             });
         } catch (tableError) {
-            await connection.end();
-            // Table doesn't exist yet
-            res.json({
-                success: true,
-                employers: []
-            });
+            if (tableError.code === 'ER_NO_SUCH_TABLE') {
+                console.log('Employers table does not exist yet');
+                res.json({
+                    success: true,
+                    employers: [],
+                    count: 0,
+                    message: 'No employers table found'
+                });
+            } else {
+                throw tableError;
+            }
         }
         
     } catch (error) {
         console.error('Error fetching employers:', error);
-        res.status(500).json({ success: false, message: 'Error fetching employers' });
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error fetching employers',
+            error: error.message 
+        });
+    } finally {
+        if (connection) await connection.end();
     }
 });
 
-// Get Payments API
+// Fixed Get Payments API
 app.get('/api/payments', authenticateToken, async (req, res) => {
+    let connection;
     try {
         const { status, service_type } = req.query;
         let query = 'SELECT * FROM payments';
@@ -352,40 +508,49 @@ app.get('/api/payments', authenticateToken, async (req, res) => {
         
         query += ' ORDER BY id DESC';
         
-        const connection = await mysql.createConnection(dbConfig);
+        connection = await createDatabaseConnection();
         
         try {
             const [payments] = await connection.execute(query, params);
-            await connection.end();
-            
             res.json({
                 success: true,
-                payments: payments
+                payments: payments,
+                count: payments.length
             });
         } catch (tableError) {
-            await connection.end();
-            // Table doesn't exist yet
-            res.json({
-                success: true,
-                payments: []
-            });
+            if (tableError.code === 'ER_NO_SUCH_TABLE') {
+                console.log('Payments table does not exist yet');
+                res.json({
+                    success: true,
+                    payments: [],
+                    count: 0,
+                    message: 'No payments table found'
+                });
+            } else {
+                throw tableError;
+            }
         }
         
     } catch (error) {
         console.error('Error fetching payments:', error);
-        res.status(500).json({ success: false, message: 'Error fetching payments' });
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error fetching payments',
+            error: error.message 
+        });
+    } finally {
+        if (connection) await connection.end();
     }
 });
 
-// Email sending function
-async function sendEmail(
-    to,
-    subject,
-    html,
-    type = 'general',
-    recipientType = 'other',
-    sentBy = null
-) {
+// Fixed email sending function
+async function sendEmail(to, subject, html, type = 'general', recipientType = 'other', sentBy = null) {
+    if (!emailTransporter) {
+        console.warn('Email transporter not configured');
+        return { success: false, error: 'Email service not configured' };
+    }
+
+    let connection;
     try {
         const mailOptions = { 
             from: process.env.EMAIL_USER, 
@@ -396,7 +561,7 @@ async function sendEmail(
         
         const result = await emailTransporter.sendMail(mailOptions);
 
-        const connection = await mysql.createConnection(dbConfig);
+        connection = await createDatabaseConnection();
         
         // Create email_logs table if it doesn't exist
         await connection.execute(`
@@ -404,7 +569,7 @@ async function sendEmail(
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 recipient_email VARCHAR(255) NOT NULL,
                 recipient_type ENUM('employee','employer','other') DEFAULT 'other',
-                subject VARCHAR(255) NOT NULL,
+                subject VARCHAR(500) NOT NULL,
                 body TEXT,
                 email_type ENUM('payment_success','registration_success','password_reset','general') DEFAULT 'general',
                 status ENUM('sent','failed') DEFAULT 'sent',
@@ -420,56 +585,75 @@ async function sendEmail(
              VALUES (?, ?, ?, ?, ?, 'sent', ?, ?)`,
             [to, recipientType, subject, html, type, sentBy, result.messageId || null]
         );
-        await connection.end();
 
+        console.log('✓ Email sent successfully to:', to);
         return { success: true, messageId: result.messageId };
     } catch (error) {
-        console.error('Error sending email:', error);
+        console.error('✗ Error sending email:', error);
         
         try {
-            const connection = await mysql.createConnection(dbConfig);
+            if (!connection) connection = await createDatabaseConnection();
             await connection.execute(
                 `INSERT INTO email_logs (recipient_email, recipient_type, subject, body, email_type, status, error_message, sent_by)
                  VALUES (?, ?, ?, ?, ?, 'failed', ?, ?)`,
                 [to, recipientType, subject, html, type, error.message || String(error), sentBy]
             );
-            await connection.end();
         } catch (logError) {
-            console.log('Failed to log email error:', logError.message);
+            console.error('Failed to log email error:', logError);
         }
         
         return { success: false, error: error.message };
+    } finally {
+        if (connection) await connection.end();
     }
 }
 
-// Send Email API
+// Fixed Send Email API
 app.post('/api/send-email', authenticateToken, async (req, res) => {
     try {
         const { to, subject, body, recipientType = 'other', emailType = 'general' } = req.body;
         
         if (!to || !subject || !body) {
-            return res.status(400).json({ success: false, message: 'All fields are required' });
+            return res.status(400).json({ 
+                success: false, 
+                message: 'All fields (to, subject, body) are required' 
+            });
         }
         
         if (!to.includes('@')) {
-            return res.status(400).json({ success: false, message: 'Invalid email address' });
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Invalid email address format' 
+            });
         }
 
         const result = await sendEmail(to, subject, body, emailType, recipientType, req.user?.id || null);
 
         if (result.success) {
-            return res.json({ success: true, message: 'Email sent successfully', messageId: result.messageId });
+            res.json({ 
+                success: true, 
+                message: 'Email sent successfully', 
+                messageId: result.messageId 
+            });
         } else {
-            return res.status(500).json({ success: false, message: 'Failed to send email: ' + result.error });
+            res.status(500).json({ 
+                success: false, 
+                message: 'Failed to send email: ' + result.error 
+            });
         }
     } catch (error) {
         console.error('Error in send email API:', error);
-        res.status(500).json({ success: false, message: 'Internal server error' });
+        res.status(500).json({ 
+            success: false, 
+            message: 'Internal server error',
+            error: error.message 
+        });
     }
 });
 
-// Get Email Logs API
+// Fixed Get Email Logs API
 app.get('/api/emails', authenticateToken, async (req, res) => {
+    let connection;
     try {
         const { status } = req.query;
         let query = 'SELECT * FROM email_logs';
@@ -480,80 +664,117 @@ app.get('/api/emails', authenticateToken, async (req, res) => {
             params.push(status);
         }
         
-        query += ' ORDER BY sent_at DESC LIMIT 100'; // Limit to last 100 emails
+        query += ' ORDER BY sent_at DESC LIMIT 100';
         
-        const connection = await mysql.createConnection(dbConfig);
+        connection = await createDatabaseConnection();
         
         try {
             const [emails] = await connection.execute(query, params);
-            await connection.end();
-            
             res.json({
                 success: true,
-                emails: emails
+                emails: emails,
+                count: emails.length
             });
         } catch (tableError) {
-            await connection.end();
-            // Table doesn't exist yet
-            res.json({
-                success: true,
-                emails: []
-            });
+            if (tableError.code === 'ER_NO_SUCH_TABLE') {
+                res.json({
+                    success: true,
+                    emails: [],
+                    count: 0,
+                    message: 'No email logs table found'
+                });
+            } else {
+                throw tableError;
+            }
         }
         
     } catch (error) {
         console.error('Error fetching emails:', error);
-        res.status(500).json({ success: false, message: 'Error fetching emails' });
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error fetching emails',
+            error: error.message 
+        });
+    } finally {
+        if (connection) await connection.end();
     }
 });
 
-// Get Today's Email Count API
+// Fixed Get Today's Email Count API
 app.get('/api/emails/today-count', authenticateToken, async (req, res) => {
+    let connection;
     try {
-        const connection = await mysql.createConnection(dbConfig);
+        connection = await createDatabaseConnection();
         
         try {
             const [result] = await connection.execute(
                 'SELECT COUNT(*) as count FROM email_logs WHERE DATE(sent_at) = CURDATE() AND status = "sent"'
             );
-            await connection.end();
             
             res.json({
                 success: true,
-                count: result[0].count || 0
+                count: parseInt(result[0].count) || 0
             });
         } catch (tableError) {
-            await connection.end();
-            res.json({
-                success: true,
-                count: 0
-            });
+            if (tableError.code === 'ER_NO_SUCH_TABLE') {
+                res.json({
+                    success: true,
+                    count: 0,
+                    message: 'No email logs table found'
+                });
+            } else {
+                throw tableError;
+            }
         }
         
     } catch (error) {
         console.error('Error fetching today email count:', error);
-        res.status(500).json({ success: false, message: 'Error fetching email count' });
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error fetching email count',
+            error: error.message 
+        });
+    } finally {
+        if (connection) await connection.end();
     }
 });
 
-
-// Employee Registration API
+// Fixed Employee Registration API
 app.post("/api/register-employee", async (req, res) => {
+    let connection;
     try {
-        const {name, contact_no, alternate_no, email, joining_company, joining_date, position} = req.body;
+        const { name, contact_no, alternate_no, email, joining_company, joining_date, position } = req.body;
         
         // Input validation
-        if (!name || !email || !contact_no || !joining_company || !joining_date || !position) {
-            return res.status(400).json({ success: false, message: 'All required fields must be filled' });
+        const requiredFields = { name, email, contact_no, joining_company, joining_date, position };
+        const missingFields = Object.entries(requiredFields).filter(([key, value]) => !value?.toString().trim());
+        
+        if (missingFields.length > 0) {
+            return res.status(400).json({ 
+                success: false, 
+                message: `Missing required fields: ${missingFields.map(([key]) => key).join(', ')}` 
+            });
         }
         
         // Validate email format
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
-            return res.status(400).json({ success: false, message: 'Invalid email format' });
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Invalid email format' 
+            });
         }
         
-        const connection = await mysql.createConnection(dbConfig);
+        // Validate phone number
+        const phoneRegex = /^(\+91|91)?[6-9]\d{9}$/;
+        if (!phoneRegex.test(contact_no.replace(/\s+/g, ''))) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Invalid phone number format' 
+            });
+        }
+        
+        connection = await createDatabaseConnection();
         
         // Create employees table if it doesn't exist
         await connection.execute(`
@@ -568,85 +789,113 @@ app.post("/api/register-employee", async (req, res) => {
                 position VARCHAR(255),
                 salary DECIMAL(10,2) DEFAULT NULL,
                 status VARCHAR(50) DEFAULT 'active',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             )
         `);
         
         const [result] = await connection.execute(
             `INSERT INTO employees (name, contact_no, alternate_no, email, joining_company, joining_date, position, status) 
              VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`,
-            [name, contact_no, alternate_no, email, joining_company, joining_date, position]
+            [name, contact_no, alternate_no || null, email, joining_company, joining_date, position]
         );
         
-        await connection.end();
-        
+        console.log('✓ Employee registered with ID:', result.insertId);
+
         // Send confirmation email
-        try {
-            const emailHtml = `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2 style="color: #307d73;">Welcome to Nexsphere Global</h2>
-                    <p>Dear ${name},</p>
-                    <p>Your employee registration has been completed successfully!</p>
-                    
-                    <div style="background: #f0f8ff; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                        <h3>Registration Details:</h3>
-                        <ul>
-                            <li><strong>Name:</strong> ${name}</li>
-                            <li><strong>Email:</strong> ${email}</li>
-                            <li><strong>Contact:</strong> ${contact_no}</li>
-                            ${alternate_no ? `<li><strong>Alternate Contact:</strong> ${alternate_no}</li>` : ''}
-                            <li><strong>Joining Company:</strong> ${joining_company}</li>
-                            <li><strong>Position:</strong> ${position}</li>
-                            <li><strong>Joining Date:</strong> ${joining_date}</li>
-                        </ul>
-                    </div>
-                    
-                    <p>Thank you for choosing Nexsphere Global Virtual HR services!</p>
-                    <p>Best regards,<br>Nexsphere Global Team</p>
+        const emailResult = await sendEmail(
+            email, 
+            'Employee Registration Successful - Nexsphere Global', 
+            `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #307d73;">Welcome to Nexsphere Global</h2>
+                <p>Dear ${name},</p>
+                <p>Your employee registration has been completed successfully!</p>
+                
+                <div style="background: #f0f8ff; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <h3>Registration Details:</h3>
+                    <ul>
+                        <li><strong>Name:</strong> ${name}</li>
+                        <li><strong>Email:</strong> ${email}</li>
+                        <li><strong>Contact:</strong> ${contact_no}</li>
+                        ${alternate_no ? `<li><strong>Alternate Contact:</strong> ${alternate_no}</li>` : ''}
+                        <li><strong>Joining Company:</strong> ${joining_company}</li>
+                        <li><strong>Position:</strong> ${position}</li>
+                        <li><strong>Joining Date:</strong> ${joining_date}</li>
+                    </ul>
                 </div>
-            `;
+                
+                <p>Thank you for choosing Nexsphere Global Virtual HR services!</p>
+                <p>Best regards,<br>Nexsphere Global Team</p>
+            </div>`,
+            'registration_success', 
+            'employee'
+        );
 
-            await sendEmail(email, 'Employee Registration Successful - Nexsphere Global', emailHtml, 'registration', 'employee');
+        res.json({
+            success: true,
+            message: 'Employee registered successfully',
+            employeeId: result.insertId,
+            emailSent: emailResult.success
+        });
 
-            res.json({
-                success: true,
-                message: 'Employee registered successfully',
-                employeeId: result.insertId
-            });
-
-        } catch (emailError) {
-            console.error('Error sending email:', emailError);
-            res.json({
-                success: true,
-                message: 'Employee registered successfully, but confirmation email sending failed',
-                employeeId: result.insertId
-            });
-        }
     } catch (error) {
         console.error('Error registering employee:', error);
         if (error.code === 'ER_DUP_ENTRY') {
-            res.status(400).json({ success: false, message: 'Employee with this email already exists' });
+            res.status(400).json({ 
+                success: false, 
+                message: 'Employee with this email already exists' 
+            });
         } else {
-            res.status(500).json({ success: false, message: 'Error registering employee: ' + error.message });
+            res.status(500).json({ 
+                success: false, 
+                message: 'Error registering employee',
+                error: error.message 
+            });
         }
+    } finally {
+        if (connection) await connection.end();
     }
 });
 
-// Create Razorpay order for employer registration fee
+// Fixed Create Razorpay order for employer registration
 app.post('/api/employer/create-order', async (req, res) => {
+    let connection;
     try {
         const { name, company_name, business_email, business_number, location, designation, company_size } = req.body;
         
         // Input validation
-        if (!name || !company_name || !business_email || !business_number || !location || !designation || !company_size) {
-            return res.status(400).json({ success: false, message: 'All fields are required' });
+        const requiredFields = { name, company_name, business_email, business_number, location, designation, company_size };
+        const missingFields = Object.entries(requiredFields).filter(([key, value]) => !value?.toString().trim());
+        
+        if (missingFields.length > 0) {
+            return res.status(400).json({ 
+                success: false, 
+                message: `Missing required fields: ${missingFields.map(([key]) => key).join(', ')}` 
+            });
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(business_email)) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Invalid email format' 
+            });
+        }
+
+        // Check Razorpay configuration
+        if (!razorpayInstance) {
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Payment gateway not configured' 
+            });
         }
         
         // Create unique receipt ID
         const receiptId = `receipt_emp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         const options = {
-            amount: 999 * 100, // amount in paise (₹999)
+            amount: 999 * 100, // Amount in paise
             currency: "INR",
             receipt: receiptId,
             notes: {
@@ -656,10 +905,7 @@ app.post('/api/employer/create-order', async (req, res) => {
             }
         };
         
-        const order = await razorpayInstance.orders.create(options);
-
-        // Store order details in the database
-        const connection = await mysql.createConnection(dbConfig);
+        connection = await createDatabaseConnection();
         
         // Create payments table if it doesn't exist
         await connection.execute(`
@@ -690,34 +936,39 @@ app.post('/api/employer/create-order', async (req, res) => {
             )
         `);
         
+        const order = await razorpayInstance.orders.create(options);
+        console.log('✓ Razorpay order created:', order.id);
+        
         await connection.execute(
             `INSERT INTO payments 
-             (razorpay_order_id, amount, currency,payment_status, name, company_name, business_email, business_number, location, designation, company_size, payment_type, receipt_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)`,
-            [order.id, 999, 'INR', 'created', name, company_name, business_email, business_number, location, designation, company_size, 'employer_registration', receiptId]
+             (razorpay_order_id, amount, currency, payment_status, name, company_name, business_email, business_number, location, designation, company_size, payment_type, receipt_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [order.id, 999, 'INR', 'created', name, company_name, business_email, business_number, location, designation, parseInt(company_size), 'employer_registration', receiptId]
         );
-        
-        await connection.end();
 
         res.json({ 
             success: true, 
             orderId: order.id,
             amount: order.amount,
-            currency:order.currency,
+            currency: order.currency,
             key: process.env.RAZORPAY_KEY_ID
         });
 
     } catch (error) {
-        console.error('Employer order creation failed:', error);
+        console.error('Order creation failed:', error);
         res.status(500).json({ 
             success: false, 
-            message: 'Failed to create payment order: ' + error.message
+            message: 'Failed to create payment order',
+            error: error.message 
         });
-    } 
+    } finally {
+        if (connection) await connection.end();
+    }
 });
 
-// Employer Registration after payment verification
+// Fixed Employer Registration after payment verification
 app.post('/api/employer/register', async (req, res) => {
+    let connection;
     try {
         const {
             razorpay_order_id,
@@ -734,20 +985,33 @@ app.post('/api/employer/register', async (req, res) => {
 
         // Input validation
         if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-            return res.status(400).json({ success: false, message: 'Payment verification data is missing' });
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Payment verification data is missing' 
+            });
         }
 
         // Verify payment signature
+        if (!process.env.RAZORPAY_KEY_SECRET) {
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Payment verification not configured' 
+            });
+        }
+
         const generated_signature = crypto
             .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
             .update(razorpay_order_id + '|' + razorpay_payment_id)
             .digest('hex');
 
         if (generated_signature !== razorpay_signature) {
-            return res.status(400).json({ success: false, message: 'Invalid payment signature' });
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Invalid payment signature' 
+            });
         }
 
-        const connection = await mysql.createConnection(dbConfig);
+        connection = await createDatabaseConnection();
 
         // Create employers table if it doesn't exist
         await connection.execute(`
@@ -774,8 +1038,10 @@ app.post('/api/employer/register', async (req, res) => {
         );
 
         if (existingPayment.length === 0) {
-            await connection.end();
-            return res.status(400).json({ success: false, message: 'Payment record not found' });
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Payment record not found' 
+            });
         }
 
         const paymentId = existingPayment[0].id;
@@ -792,7 +1058,7 @@ app.post('/api/employer/register', async (req, res) => {
             [razorpay_payment_id, razorpay_signature, razorpay_order_id]
         );
 
-        // Insert employer details into the employers table
+        // Insert employer details
         const [result] = await connection.execute(
             `INSERT INTO employers 
              (name, company_name, business_email, business_number, location, designation, company_size, payment_id, status)
@@ -806,68 +1072,83 @@ app.post('/api/employer/register', async (req, res) => {
             [result.insertId, paymentId]
         );
 
-        await connection.end();
+        console.log('✓ Employer registered with ID:', result.insertId);
 
-        // Send confirmation email to employer
-        try {
-            const emailHtml = `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2 style="color: #307d73;">Welcome to Nexsphere Global</h2>
-                    <p>Dear ${name},</p>
-                    <p>Congratulations! Your employer registration has been completed successfully!</p>
-                    
-                    <div style="background: #f0f8ff; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                        <h3>Registration Details:</h3>
-                        <ul>
-                            <li><strong>Company Name:</strong> ${company_name}</li>
-                            <li><strong>Contact Person:</strong> ${name}</li>
-                            <li><strong>Business Email:</strong> ${business_email}</li>
-                            <li><strong>Business Number:</strong> ${business_number}</li>
-                            <li><strong>Location:</strong> ${location}</li>
-                            <li><strong>Designation:</strong> ${designation}</li>
-                            <li><strong>Company Size:</strong> ${company_size} employees</li>
-                        </ul>
-                    </div>
-                    
-                    <div style="background: #d4edda; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                        <h3>Payment Confirmation:</h3>
-                        <p><strong>Amount Paid:</strong> ₹999</p>
-                        <p><strong>Payment ID:</strong> ${razorpay_payment_id}</p>
-                        <p><strong>Transaction Date:</strong> ${new Date().toLocaleString()}</p>
-                    </div>
-                    
-                    <p>Your account is now active and you can start posting job requirements.</p>
-                    <p>Thank you for choosing Nexsphere Global Virtual HR services!</p>
-                    <p>Best regards,<br>Nexsphere Global Team</p>
+        // Send confirmation email
+        const emailResult = await sendEmail(
+            business_email, 
+            'Employer Registration Successful - Nexsphere Global', 
+            `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #307d73;">Welcome to Nexsphere Global</h2>
+                <p>Dear ${name},</p>
+                <p>Congratulations! Your employer registration has been completed successfully!</p>
+                
+                <div style="background: #f0f8ff; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                    <h3>Registration Details:</h3>
+                    <ul>
+                        <li><strong>Company Name:</strong> ${company_name}</li>
+                        <li><strong>Contact Person:</strong> ${name}</li>
+                        <li><strong>Business Email:</strong> ${business_email}</li>
+                        <li><strong>Business Number:</strong> ${business_number}</li>
+                        <li><strong>Location:</strong> ${location}</li>
+                        <li><strong>Designation:</strong> ${designation}</li>
+                        <li><strong>Company Size:</strong> ${company_size} employees</li>
+                    </ul>
                 </div>
-            `;
-
-            await sendEmail(business_email, 'Employer Registration Successful - Nexsphere Global', emailHtml, 'registration', 'employer');
-        } catch (emailError) {
-            console.error('Error sending confirmation email:', emailError);
-        }
+                
+                <div style="background: #d4edda; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <h3>Payment Confirmation:</h3>
+                    <p><strong>Amount Paid:</strong> ₹999</p>
+                    <p><strong>Payment ID:</strong> ${razorpay_payment_id}</p>
+                    <p><strong>Transaction Date:</strong> ${new Date().toLocaleString()}</p>
+                </div>
+                
+                <p>Your account is now active and you can start posting job requirements.</p>
+                <p>Thank you for choosing Nexsphere Global Virtual HR services!</p>
+                <p>Best regards,<br>Nexsphere Global Team</p>
+            </div>`,
+            'registration_success', 
+            'employer'
+        );
 
         res.json({
             success: true,
             message: 'Employer registered successfully',
             employerId: result.insertId,
-            paymentId: razorpay_payment_id
+            paymentId: razorpay_payment_id,
+            emailSent: emailResult.success
         });
         
     } catch (error) {
         console.error('Error registering employer:', error);
         if (error.code === 'ER_DUP_ENTRY') {
-            res.status(400).json({ success: false, message: 'Employer with this email already exists' });
+            res.status(400).json({ 
+                success: false, 
+                message: 'Employer with this email already exists' 
+            });
         } else {
-            res.status(500).json({ success: false, message: 'Error registering employer: ' + error.message });
+            res.status(500).json({ 
+                success: false, 
+                message: 'Error registering employer',
+                error: error.message 
+            });
         }
+    } finally {
+        if (connection) await connection.end();
     }
 });
 
-// Webhook to handle Razorpay payment events
+// Fixed Webhook handler
 app.post('/api/razorpay/webhook', async (req, res) => {
+    let connection;
     try {
         const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+        
+        if (!secret) {
+            console.warn('Razorpay webhook secret not configured');
+            return res.status(400).json({ error: 'Webhook not configured' });
+        }
+
         const shasum = crypto.createHmac('sha256', secret);
         shasum.update(JSON.stringify(req.body));
         const digest = shasum.digest('hex');
@@ -877,8 +1158,7 @@ app.post('/api/razorpay/webhook', async (req, res) => {
             const payment = req.body.payload.payment.entity;
 
             if (event === 'payment.captured') {
-                // Update payment status in database
-                const connection = await mysql.createConnection(dbConfig);
+                connection = await createDatabaseConnection();
                 await connection.execute(
                     `UPDATE payments SET 
                      payment_status = 'paid', 
@@ -888,24 +1168,41 @@ app.post('/api/razorpay/webhook', async (req, res) => {
                      WHERE razorpay_payment_id = ?`,
                     [payment.method, payment.id]
                 );
-                await connection.end();
                 
-                console.log('Payment captured webhook processed:', payment.id);
+                console.log('✓ Payment captured webhook processed:', payment.id);
             }
+        } else {
+            console.warn('Invalid webhook signature');
+            return res.status(400).json({ error: 'Invalid signature' });
         }
         
         res.json({ status: 'ok' });
     } catch (error) {
         console.error('Webhook error:', error);
         res.status(500).json({ error: 'Webhook processing failed' });
+    } finally {
+        if (connection) await connection.end();
     }
 });
 
-// Manual payment verification endpoint (for UPI/QR payments)
+// Manual payment verification endpoint
 app.post('/api/employer/manual-payment', async (req, res) => {
+    let connection;
     try {
         const paymentData = req.body;
-        const connection = await mysql.createConnection(dbConfig);
+        
+        // Validate required fields
+        const requiredFields = ['name', 'company_name', 'business_email', 'business_number', 'location', 'designation', 'company_size'];
+        const missingFields = requiredFields.filter(field => !paymentData[field]);
+        
+        if (missingFields.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: `Missing required fields: ${missingFields.join(', ')}`
+            });
+        }
+
+        connection = await createDatabaseConnection();
         
         // Generate a manual payment ID
         const manualPaymentId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -915,10 +1212,8 @@ app.post('/api/employer/manual-payment', async (req, res) => {
             `INSERT INTO payments 
              (amount, currency, payment_status, name, company_name, business_email, business_number, location, designation, company_size, payment_type, razorpay_payment_id, payment_method)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [999, 'INR', 'pending_verification', paymentData.name, paymentData.company_name, paymentData.business_email, paymentData.business_number, paymentData.location, paymentData.designation, paymentData.company_size, 'employer_registration', manualPaymentId, paymentData.payment_method]
+            [999, 'INR', 'pending_verification', paymentData.name, paymentData.company_name, paymentData.business_email, paymentData.business_number, paymentData.location, paymentData.designation, parseInt(paymentData.company_size), 'employer_registration', manualPaymentId, paymentData.payment_method || 'manual']
         );
-        
-        await connection.end();
         
         res.json({
             success: true,
@@ -929,91 +1224,184 @@ app.post('/api/employer/manual-payment', async (req, res) => {
         
     } catch (error) {
         console.error('Manual payment processing error:', error);
-        res.status(500).json({ success: false, message: 'Error processing manual payment' });
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error processing manual payment',
+            error: error.message 
+        });
+    } finally {
+        if (connection) await connection.end();
     }
 });
 
-// Test endpoint to check if server is running
-app.get('/api/test', (req, res) => {
-    res.json({ 
-        success: true, 
-        message: 'Server is running', 
+// Test endpoint with enhanced diagnostics
+app.get('/api/test', async (req, res) => {
+    const diagnostics = {
+        success: true,
+        message: 'Server is running',
         timestamp: new Date().toISOString(),
-        razorpay_configured: !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET)
+        server: 'Node.js Express',
+        version: process.version,
+        environment: process.env.NODE_ENV || 'development',
+        services: {
+            database: false,
+            razorpay: false,
+            email: false
+        }
+    };
+
+    // Test database connection
+    try {
+        const connection = await createDatabaseConnection();
+        await connection.ping();
+        await connection.end();
+        diagnostics.services.database = true;
+    } catch (error) {
+        console.log('Database test failed:', error.message);
+    }
+
+    // Test Razorpay configuration
+    diagnostics.services.razorpay = !!(razorpayInstance && process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
+
+    // Test email configuration
+    diagnostics.services.email = !!(emailTransporter && process.env.EMAIL_USER && process.env.EMAIL_PASSWORD);
+
+    res.json(diagnostics);
+});
+
+// Health check endpoint with detailed status
+app.get('/api/health', async (req, res) => {
+    const health = {
+        success: true,
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        services: {}
+    };
+
+    try {
+        // Test database connection
+        const connection = await createDatabaseConnection();
+        await connection.execute('SELECT 1 as test');
+        await connection.end();
+        health.services.database = 'connected';
+    } catch (error) {
+        health.services.database = 'disconnected';
+        health.status = 'degraded';
+        health.database_error = error.message;
+    }
+
+    // Check other services
+    health.services.razorpay = razorpayInstance ? 'configured' : 'not configured';
+    health.services.email = emailTransporter ? 'configured' : 'not configured';
+
+    const statusCode = health.status === 'healthy' ? 200 : 503;
+    res.status(statusCode).json(health);
+});
+
+// Root route
+app.get('/', (req, res) => {
+    const indexPath = path.join(__dirname, 'public', 'index.html');
+    const registerPath = path.join(__dirname, 'public', 'register.html');
+    
+    // Check which file exists and serve it
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else if (fs.existsSync(registerPath)) {
+        res.sendFile(registerPath);
+    } else {
+        res.json({
+            message: 'Nexsphere Global HR API Server',
+            status: 'running',
+            endpoints: [
+                'GET /api/test - Server test',
+                'GET /api/health - Health check',
+                'POST /api/hr/login - HR login',
+                'POST /api/register-employee - Employee registration',
+                'POST /api/employer/create-order - Create payment order',
+                'POST /api/employer/register - Complete employer registration'
+            ]
+        });
+    }
+});
+
+// API 404 handler
+app.use('/api/*', (req, res) => {
+    res.status(404).json({ 
+        success: false, 
+        message: `API endpoint not found: ${req.method} ${req.path}`,
+        available_endpoints: [
+            'GET /api/test',
+            'GET /api/health', 
+            'POST /api/hr/login',
+            'GET /api/dashboard/stats',
+            'GET /api/employees',
+            'GET /api/employers',
+            'GET /api/payments',
+            'POST /api/send-email',
+            'GET /api/emails',
+            'GET /api/emails/today-count',
+            'POST /api/register-employee',
+            'POST /api/employer/create-order',
+            'POST /api/employer/register',
+            'POST /api/employer/manual-payment',
+            'POST /api/razorpay/webhook'
+        ]
     });
 });
 
-// Health check endpoint
-app.get('/api/health', async (req, res) => {
-    try {
-        // Test database connection
-        const connection = await mysql.createConnection(dbConfig);
-        await connection.execute('SELECT 1');
-        await connection.end();
-        
-        res.json({
-            success: true,
-            status: 'healthy',
-            database: 'connected',
-            timestamp: new Date().toISOString()
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            status: 'unhealthy',
-            database: 'disconnected',
-            error: error.message
-        });
-    }
-});
-
-// Serve static files - should come after API routes
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'register.html'));
-});
-
-// Handle 404 for API routes
-app.use('/api/*', (req, res) => {
-    res.status(404).json({ success: false, message: 'API endpoint not found' });
-});
-
-// Global error handler
+// Global error handler with better error responses
 app.use((error, req, res, next) => {
     console.error('Global error handler:', error);
+    
+    // Handle specific error types
+    if (error.type === 'entity.parse.failed') {
+        return res.status(400).json({
+            success: false,
+            message: 'Invalid JSON in request body',
+            error: 'Malformed JSON'
+        });
+    }
+    
+    if (error.code === 'EBADCSRFTOKEN') {
+        return res.status(403).json({
+            success: false,
+            message: 'Invalid CSRF token'
+        });
+    }
+
     res.status(500).json({ 
         success: false, 
         message: 'Internal server error',
-        error: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
+        error: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong',
+        timestamp: new Date().toISOString()
     });
 });
 
-// Start the server
-// app.listen(port, () => {
-//     console.log(`Server is running on port ${port}`);
-//     console.log(`Access the application at: http://localhost:${port}`);
-//     console.log('Make sure your .env file contains the required database and other configurations');
-//     console.log('Required .env variables:');
-//     console.log('- DB_HOST, DB_USER, DB_PASSWORD, DB_NAME');
-//     console.log('- RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET');
-//     console.log('- EMAIL_USER, EMAIL_PASSWORD');
-//     console.log('- JWT_SECRET');
-// });
-
-// server.js
-// <CHANGE> Express app exported for Vercel serverless (no app.listen)
-
-
-
-/* 
-// ... existing code ...
-// <CHANGE> Move ALL your existing routes/middleware here.
-// DO NOT call app.listen() anywhere.
-*/
-
-// Optional: app-level 404 (so unmatched routes return JSON instead of Vercel 404 card)
-app.use((req, res) => {
-  res.status(404).json({ error: "Route not found", path: req.path });
+// Graceful shutdown handling
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully');
+    process.exit(0);
 });
 
-// <CHANGE> Export the app for Vercel's Node builder
+process.on('SIGINT', () => {
+    console.log('SIGINT received, shutting down gracefully');
+    process.exit(0);
+});
+
+// Only start server locally, not on Vercel
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+    app.listen(port, '0.0.0.0', () => {
+        console.log(`✓ Server is running on port ${port}`);
+        console.log(`✓ Access the application at: http://localhost:${port}`);
+        console.log(`✓ API base URL: http://localhost:${port}/api/`);
+        console.log('\n📋 Required .env variables:');
+        console.log('   - DB_HOST, DB_USER, DB_PASSWORD, DB_NAME');
+        console.log('   - RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET');
+        console.log('   - EMAIL_USER, EMAIL_PASSWORD');
+        console.log('   - JWT_SECRET');
+        console.log('\n🔧 Test your server: curl http://localhost:' + port + '/api/test');
+    });
+}
+
+// Export for Vercel
 module.exports = app;
