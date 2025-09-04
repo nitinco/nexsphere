@@ -68,7 +68,7 @@ const API_BASE_URL = 'https://api.nexsphereglobal.com';
 let employerFormData = {};
 
 // Feature flag to control API calls
-const API_ENABLED = false; // Set to true when backend is ready
+const API_ENABLED = true; // Set to true when backend is ready
 
 // Utility Functions
 function showMessage(message, type = 'info') {
@@ -398,27 +398,42 @@ async function handleEmployerFormSubmit(e) {
     }
 
     // Check if API is enabled
-    if (!API_ENABLED) {
-      showMessage('Employer registration is currently being set up. Please check back soon!', 'info');
-      return;
-    }
+if (!API_ENABLED) {
+  showMessage('Employer registration is currently being set up. Please check back soon!', 'info');
+  return;
+}
 
-    // Disable button and show loading
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Processing...';
-    showLoading('Creating payment order...');
+// Disable button and show loading
+submitBtn.disabled = true;
+submitBtn.textContent = 'Processing...';
+showLoading('Creating payment order...');
 
-    // Create payment order
-    const orderData = await makeAPICall(`${API_BASE_URL}/api/employer/create-order`, {
-      method: 'POST',
-      body: JSON.stringify(employerFormData)
-    });
-
-    hideLoading();
-
-    if (!orderData.success) {
-      throw new Error(orderData.message || 'Failed to create payment order');
-    }
+try {
+  // Create payment order
+  const orderData = await makeAPICall(`${API_BASE_URL}/api/employer/create-order`, {
+    method: 'POST',
+    body: JSON.stringify(employerFormData)
+  });
+  
+  // Handle success
+  console.log('Order created successfully:', orderData);
+  
+} catch (error) {
+  console.error('Failed to create order:', error);
+  
+  // Re-enable button
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Submit';
+  
+  // Show user-friendly error message
+  if (error.message.includes('404')) {
+    showMessage('Service temporarily unavailable. Please try again later.', 'error');
+  } else {
+    showMessage('An error occurred. Please check your details and try again.', 'error');
+  }
+  
+  hideLoading();
+}
 
     // Initialize Razorpay payment
     initiateRazorpayPayment(orderData);
