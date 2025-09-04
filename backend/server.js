@@ -211,6 +211,24 @@ testConnection().then(connected => {
     }
 });
 
+// ✅ Token validation route
+app.get('/api/hr/auth/validate', (req, res) => {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader) {
+        return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+
+    const token = authHeader.split(' ')[1]; // "Bearer <token>"
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+        if (err) {
+            return res.status(403).json({ success: false, message: 'Invalid or expired token' });
+        }
+
+        res.json({ success: true, user: decoded });
+    });
+});
+
+
 // HR login with improved error handling
 app.post('/api/hr/login', async (req, res) => {
     let connection;

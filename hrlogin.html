@@ -274,7 +274,6 @@
                     id="email" 
                     class="form-input" 
                     placeholder="Enter your email address"
-                    value="hr@nexspherehr.in"
                     required
                 >
             </div>
@@ -286,7 +285,6 @@
                     id="password" 
                     class="form-input" 
                     placeholder="Enter your password"
-                    value="Nex63670"
                     required
                 >
                 <button type="button" class="password-toggle" onclick="togglePassword()" id="passwordToggle">
@@ -316,8 +314,8 @@
     </div>
 
     <script>
-        // Configuration - Production API endpoint
-        const API_BASE_URL = 'https://api.nexsphereglobal.com';
+        // FIXED: Configuration - Use localhost for development
+        const API_BASE_URL = 'https://api.nexsphereglobal.com'; 
 
         function togglePassword() {
             const passwordInput = document.getElementById('password');
@@ -383,45 +381,29 @@
             showMessage('success', `Password reset instructions have been sent to ${email}. Please check your inbox.`);
         }
 
-        // Check server connection
-        async function checkServerConnection() {
-            try {
-                // Try different possible endpoints
-                const endpoints = [
-                    `${API_BASE_URL}/api/test`,
-                    `${API_BASE_URL}/test`,
-                    `${API_BASE_URL}/health`,
-                    `${API_BASE_URL}/`
-                ];
+        // Check server connection (production-ready)
+async function checkServerConnection() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/health`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
 
-                for (const endpoint of endpoints) {
-                    try {
-                        const response = await fetch(endpoint, {
-                            method: 'GET',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            timeout: 5000
-                        });
-                        
-                        if (response.ok || response.status === 404) {
-                            updateServerStatus('connected', 'Server is reachable');
-                            return true;
-                        }
-                    } catch (e) {
-                        continue;
-                    }
-                }
-                
-                updateServerStatus('error', 'Server not reachable. Please check if the backend is running.');
-                return false;
-                
-            } catch (error) {
-                console.error('Server connection check failed:', error);
-                updateServerStatus('error', 'Cannot connect to server. Please check your network connection.');
-                return false;
-            }
-        }
+    if (response.ok) {
+      updateServerStatus('connected', 'Server is reachable');
+      return true;
+    } else {
+      updateServerStatus('error', 'Server is not responding correctly');
+      return false;
+    }
+  } catch (error) {
+    console.error('Server connection check failed:', error);
+    updateServerStatus('error', 'Cannot connect to server. Please check the backend.');
+    return false;
+  }
+}
 
         // Check if user is already logged in
         window.addEventListener('load', async function() {
@@ -432,7 +414,7 @@
             if (token) {
                 // Validate token before redirecting
                 try {
-                    const response = await fetch(`${API_BASE_URL}/api/auth/validate`, {
+                    const response = await fetch(`${API_BASE_URL}/api/hr/auth/validate`, {
                         headers: {
                             'Authorization': `Bearer ${token}`,
                             'Content-Type': 'application/json'
@@ -463,7 +445,7 @@
             }
         });
 
-        // Login form submission
+        // FIXED: Login form submission - use correct endpoint
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
@@ -488,8 +470,8 @@
             loginBtn.textContent = 'Signing in...';
             
             try {
-                // Make API call to backend
-                const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+                // FIXED: Make API call to correct backend endpoint
+                const response = await fetch(`${API_BASE_URL}/api/hr/login`, { // Changed from /api/auth/login
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -536,9 +518,9 @@
             } catch (error) {
                 console.error('Login error:', error);
                 if (error.message.includes('404')) {
-                    showMessage('error', 'Login endpoint not found. Please contact support or check if the API server is properly configured.');
+                    showMessage('error', 'Backend server not running. Please start your Node.js server on localhost:3000');
                 } else if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-                    showMessage('error', 'Cannot connect to server. Please check your network connection.');
+                    showMessage('error', 'Cannot connect to server. Please start your backend server on localhost:3000');
                 } else {
                     showMessage('error', 'Login failed: ' + (error.message || 'Unknown error'));
                 }
