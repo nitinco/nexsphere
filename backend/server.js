@@ -38,7 +38,11 @@ app.use(cors({
             'https://api.nexsphereglobal.com'
         ];
         
-        if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+        if (
+            allowedOrigins.indexOf(origin) !== -1 ||
+            /\.vercel\.app$/.test(origin) ||
+            process.env.NODE_ENV === 'development'
+        ) {
             callback(null, true);
         } else {
             callback(new Error('Not allowed by CORS'));
