@@ -92,7 +92,7 @@
 })(window.jQuery);
 
 // API Configuration
-const API_BASE_URL = 'https://api.nexsphereglobal.com/'; 
+const API_BASE_URL = 'https://api.nexsphereglobal.com'; 
 let employerFormData = {};
 
 // Feature flag to control API calls
