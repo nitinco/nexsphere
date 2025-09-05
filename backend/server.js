@@ -19,6 +19,7 @@ const port = process.env.PORT || 3000;
 const app = express();
 
 // CORS configuration - Fixed to be more permissive for development
+// CORS configuration - Enhanced to handle headers properly
 app.use(cors({
     origin: function (origin, callback) {
         // Allow requests with no origin (like mobile apps or Postman)
@@ -45,7 +46,17 @@ app.use(cors({
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-requested-with'],
+    allowedHeaders: [
+        'Content-Type', 
+        'Authorization', 
+        'x-requested-with',
+        'x-razorpay-signature',
+        'x-rtb-fingerprint-id'  // Add this to allow the header
+    ],
+    exposedHeaders: [
+        'x-razorpay-signature',
+        'x-rtb-fingerprint-id'  // Expose this header for frontend access
+    ],
     preflightContinue: false,
     optionsSuccessStatus: 200
 }));

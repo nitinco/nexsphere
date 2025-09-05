@@ -1,6 +1,34 @@
 (function ($) {
   "use strict";
 
+  // Suppress specific browser security errors that don't affect functionality
+  const originalError = console.error;
+  console.error = function(...args) {
+    const errorMessage = args[0];
+    
+    // List of errors to suppress
+    const suppressedErrors = [
+      'x-rtb-fingerprint-id',
+      'Refused to get unsafe header',
+      'RTB',
+      'fingerprint'
+    ];
+    
+    // Check if this error should be suppressed
+    if (typeof errorMessage === 'string') {
+      const shouldSuppress = suppressedErrors.some(suppressedError => 
+        errorMessage.toLowerCase().includes(suppressedError.toLowerCase())
+      );
+      
+      if (shouldSuppress) {
+        return; // Don't log this error
+      }
+    }
+    
+    // Log all other errors normally
+    originalError.apply(console, args);
+  };
+
   // COUNTER NUMBERS
   jQuery('.counter-thumb').appear(function () {
     jQuery('.counter-number').countTo();
@@ -64,7 +92,7 @@
 })(window.jQuery);
 
 // API Configuration
-const API_BASE_URL = 'https://api.nexsphereglobal.com'; 
+const API_BASE_URL = 'http://localhost:3000'; 
 let employerFormData = {};
 
 // Feature flag to control API calls
@@ -120,7 +148,7 @@ async function makeAPICall(url, options = {}) {
     const response = await fetch(url, config);
     
     console.log('Response status:', response.status);
-    console.log('Response headers:', response.headers);
+    // console.log('Response headers:', response.headers);
 
     // Check if response is ok
     if (!response.ok) {
@@ -398,50 +426,59 @@ async function handleEmployerFormSubmit(e) {
     }
 
     // Check if API is enabled
-if (!API_ENABLED) {
-  showMessage('Employer registration is currently being set up. Please check back soon!', 'info');
-  return;
-}
+    if (!API_ENABLED) {
+      showMessage('Employer registration is currently being set up. Please check back soon!', 'info');
+      return;
+    }
 
-// Disable button and show loading
-submitBtn.disabled = true;
-submitBtn.textContent = 'Processing...';
-showLoading('Creating payment order...');
+    // Disable button and show loading
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Processing...';
+    showLoading('Creating payment order...');
 
-try {
-  // Create payment order
-  const orderData = await makeAPICall(`${API_BASE_URL}/api/employer/create-order`, {
-    method: 'POST',
-    body: JSON.stringify(employerFormData)
-  });
-  
-  // Handle success
-  console.log('Order created successfully:', orderData);
-  
-} catch (error) {
-  console.error('Failed to create order:', error);
-  
-  // Re-enable button
-  submitBtn.disabled = false;
-  submitBtn.textContent = 'Submit';
-  
-  // Show user-friendly error message
-  if (error.message.includes('404')) {
-    showMessage('Service temporarily unavailable. Please try again later.', 'error');
-  } else {
-    showMessage('An error occurred. Please check your details and try again.', 'error');
-  }
-  
-  hideLoading();
-}
+    let orderData; // Declare orderData in the main scope
 
-    // Initialize Razorpay payment
-    initiateRazorpayPayment(orderData);
+    try {
+      // Create payment order
+      orderData = await makeAPICall(`${API_BASE_URL}/api/employer/create-order`, {
+        method: 'POST',
+        body: JSON.stringify(employerFormData)
+      });
+      
+      hideLoading(); // Hide loading after successful order creation
+      
+      // Handle success
+      console.log('Order created successfully:', orderData);
+      
+      // Initialize Razorpay payment
+      initiateRazorpayPayment(orderData);
+      
+    } catch (error) {
+      console.error('Failed to create order:', error);
+      
+      hideLoading(); // Hide loading on error
+      
+      // Re-enable button
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
+      
+      // Show user-friendly error message
+      if (error.message.includes('404')) {
+        showMessage('Service temporarily unavailable. Please try again later.', 'error');
+      } else if (error.message.includes('Cannot connect to server')) {
+        showMessage('Cannot connect to server. Please ensure the server is running and try again.', 'error');
+      } else {
+        showMessage('An error occurred while creating payment order: ' + error.message, 'error');
+      }
+      
+      // Don't proceed to payment if order creation failed
+      return;
+    }
 
   } catch (error) {
     hideLoading();
     console.error('Employer form error:', error);
-    showMessage('Failed to initiate payment: ' + error.message, 'error');
+    showMessage('Failed to process form: ' + error.message, 'error');
     
     if (submitBtn) {
       submitBtn.disabled = false;
