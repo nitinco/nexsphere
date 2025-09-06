@@ -315,7 +315,15 @@
 
     <script>
        
-        const API_BASE_URL = 'https://api.nexsphereglobal.com'; 
+        // Dynamic API URL - works for both development and production
+        const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+            ? 'http://localhost:3000' 
+            : 'https://api.nexsphereglobal.com';
+        
+        // Debug logging
+        console.log('HR Login Page loaded');
+        console.log('API Base URL:', API_BASE_URL);
+        console.log('Current hostname:', window.location.hostname); 
 
         function togglePassword() {
             const passwordInput = document.getElementById('password');
@@ -382,28 +390,41 @@
         }
 
         // Check server connection (production-ready)
-async function checkServerConnection() {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/health`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    });
+        async function checkServerConnection() {
+            try {
+                console.log('Checking server connection to:', `${API_BASE_URL}/api/health`);
+                
+                const response = await fetch(`${API_BASE_URL}/api/health`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    // Add timeout for better UX
+                    signal: AbortSignal.timeout(10000) // 10 second timeout
+                });
 
-    if (response.ok) {
-      updateServerStatus('connected', 'Server is reachable');
-      return true;
-    } else {
-      updateServerStatus('error', 'Server is not responding correctly');
-      return false;
-    }
-  } catch (error) {
-    console.error('Server connection check failed:', error);
-    updateServerStatus('error', 'Cannot connect to server. Please check the backend.');
-    return false;
-  }
-}
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Server health check response:', data);
+                    updateServerStatus('connected', 'Server is reachable and healthy');
+                    return true;
+                } else {
+                    console.warn('Server responded with status:', response.status);
+                    updateServerStatus('error', `Server responded with status ${response.status}`);
+                    return false;
+                }
+            } catch (error) {
+                console.error('Server connection check failed:', error);
+                if (error.name === 'TimeoutError') {
+                    updateServerStatus('error', 'Server connection timeout. Please check if the backend is running.');
+                } else if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                    updateServerStatus('error', `Cannot connect to server at ${API_BASE_URL}. Please check if the backend is running.`);
+                } else {
+                    updateServerStatus('error', 'Cannot connect to server. Please check the backend.');
+                }
+                return false;
+            }
+        }
 
         // Check if user is already logged in
         window.addEventListener('load', async function() {
@@ -518,9 +539,9 @@ async function checkServerConnection() {
             } catch (error) {
                 console.error('Login error:', error);
                 if (error.message.includes('404')) {
-                    showMessage('error', 'Backend server not running. Please start your Node.js server on localhost:3000');
+                    showMessage('error', `Backend server not running. Please start your Node.js server on ${API_BASE_URL}`);
                 } else if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-                    showMessage('error', 'Cannot connect to server. Please start your backend server on localhost:3000');
+                    showMessage('error', `Cannot connect to server. Please check if your backend server is running on ${API_BASE_URL}`);
                 } else {
                     showMessage('error', 'Login failed: ' + (error.message || 'Unknown error'));
                 }

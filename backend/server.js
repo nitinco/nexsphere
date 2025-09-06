@@ -15,108 +15,82 @@ const crypto = require('crypto');
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../.env') });
+
+// Environment validation
+function validateEnvironment() {
+    const required = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME', 'JWT_SECRET'];
+    const optional = ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'EMAIL_USER', 'EMAIL_PASSWORD'];
+    
+    const missing = required.filter(key => !process.env[key]);
+    if (missing.length > 0) {
+        console.error('Missing required environment variables:', missing);
+        console.log('Please check your .env file and ensure all required variables are set.');
+        process.exit(1);
+    }
+    
+    const missingOptional = optional.filter(key => !process.env[key]);
+    if (missingOptional.length > 0) {
+        console.log('ℹ️  Optional environment variables not set:', missingOptional.join(', '));
+        console.log('ℹ️  These features will be disabled:');
+        missingOptional.forEach(key => {
+            const feature = {
+                'RAZORPAY_KEY_ID': 'Payment processing',
+                'RAZORPAY_KEY_SECRET': 'Payment processing', 
+                'EMAIL_USER': 'Email notifications',
+                'EMAIL_PASSWORD': 'Email notifications'
+            }[key] || 'Unknown feature';
+            console.log(`   - ${key}: ${feature}`);
+        });
+    }
+    
+    console.log('Environment variables validated successfully');
+}
+
+validateEnvironment();
+
 const port = process.env.PORT || 3000;
 const app = express();
 
-// CORS configuration - Fixed to be more permissive for development
-// CORS configuration - Enhanced to handle headers properly
-app.use(cors({
-    origin: function (origin, callback) {
-        // Allow requests with no origin (like mobile apps or Postman)
-        if (!origin) return callback(null, true);
-        
-        const allowedOrigins = [
-            'http://localhost:3000',
-            'http://127.0.0.1:3000', 
-            'http://localhost:5500',
-            'http://127.0.0.1:5500',
-            'http://localhost:8080',
-            'http://127.0.0.1:8080',
-            'http://nexsphereglobal.com',
-            'https://nexsphereglobal.com',
-            'https://www.nexsphereglobal.com',
-            'https://api.nexsphereglobal.com'
-        ];
-        
-        if (
-            allowedOrigins.indexOf(origin) !== -1 ||
-            /\.vercel\.app$/.test(origin) ||
-            process.env.NODE_ENV === 'development'
-        ) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-        'Content-Type', 
-        'Authorization', 
-        'x-requested-with',
-        'x-razorpay-signature',
-        'x-rtb-fingerprint-id'  // Add this to allow the header
-    ],
-    exposedHeaders: [
-        'x-razorpay-signature',
-        'x-rtb-fingerprint-id'  // Expose this header for frontend access
-    ],
-    preflightContinue: false,
-    optionsSuccessStatus: 200
-}));
-
-// Handle preflight requests
-app.options('*', cors());
-
-// Middleware
-app.use(helmet({
-    contentSecurityPolicy: false,
-    crossOriginEmbedderPolicy: false
-}));
-
-// Rate limiter - Made more lenient for development
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 200, // Increased limit for development
-    message: { error: 'Too many requests from this IP, please try again later.' },
-    standardHeaders: true,
-    legacyHeaders: false,
-    skip: (req) => {
-        // Skip rate limiting in development
-        return process.env.NODE_ENV === 'development';
-    }
-});
-app.use('/api/', limiter);
-
-// Body parser middleware - Increased limits
-app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
-
-// Request logging middleware for debugging
-app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-    if (req.body && Object.keys(req.body).length > 0) {
-        console.log('Request body:', req.body);
-    }
-    next();
-});
-
-// Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Database configuration with better error handling
+// Database configuration with connection pooling
 const dbConfig = {
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'nexsphere_hr',
-    connectTimeout: 60000,
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    connectionLimit: 10,
+    // Removed deprecated options: acquireTimeout, timeout, reconnect
+    // These are now handled automatically by mysql2
 };
 
-// JWT secret key
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here-change-in-production';
+let connectionPool = null;
 
-// Razorpay instance with validation
+// Initialize database pool
+async function initializeDatabase() {
+    try {
+        connectionPool = mysql.createPool(dbConfig);
+        const connection = await connectionPool.getConnection();
+        await connection.ping();
+        connection.release();
+        console.log('Database pool initialized successfully');
+        return true;
+    } catch (error) {
+        console.error('Database pool initialization failed:', error.message);
+        return false;
+    }
+}
+
+// Get database connection from pool
+async function getDatabaseConnection() {
+    if (!connectionPool) {
+        throw new Error('Database pool not initialized');
+    }
+    return await connectionPool.getConnection();
+}
+
+// JWT secret
+const JWT_SECRET = process.env.JWT_SECRET;
+
+// Razorpay configuration
 let razorpayInstance = null;
 try {
     if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
@@ -126,13 +100,13 @@ try {
         });
         console.log('Razorpay configured successfully');
     } else {
-        console.warn('Razorpay credentials not found in environment variables');
+        console.warn('Razorpay credentials not found - payment features disabled');
     }
 } catch (error) {
     console.error('Error initializing Razorpay:', error);
 }
 
-// Email transporter setup with validation
+// Email configuration
 let emailTransporter = null;
 try {
     if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
@@ -145,438 +119,129 @@ try {
         });
         console.log('Email transporter configured successfully');
     } else {
-        console.warn('Email credentials not found in environment variables');
+        console.warn('Email credentials not found - email features disabled');
     }
 } catch (error) {
     console.error('Error initializing email transporter:', error);
 }
 
-// Database connection helper with retry logic
-async function createDatabaseConnection() {
-    let retries = 3;
-    while (retries > 0) {
-        try {
-            const connection = await mysql.createConnection(dbConfig);
-            return connection;
-        } catch (error) {
-            retries--;
-            console.error(`Database connection attempt failed (${3 - retries}/3):`, error.message);
-            if (retries === 0) throw error;
-            await new Promise(resolve => setTimeout(resolve, 1000));
+// Middleware setup
+app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
+}));
+
+// CORS configuration - Updated for production
+const allowedOrigins = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5500',
+    'http://127.0.0.1:5500',
+    'http://localhost:8080',
+    'http://127.0.0.1:8080',
+    'https://nexsphereglobal.com',
+    'https://www.nexsphereglobal.com',
+    'https://api.nexsphereglobal.com',
+    // Add your actual production domains here
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.indexOf(origin) !== -1 || 
+            /\.vercel\.app$/.test(origin) || 
+            process.env.NODE_ENV === 'development') {
+            callback(null, true);
+        } else {
+            console.log('CORS blocked origin:', origin);
+            callback(new Error('Not allowed by CORS'));
         }
-    }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-requested-with'],
+    preflightContinue: false,
+    optionsSuccessStatus: 200
+}));
+
+// Handle preflight requests
+app.options('*', cors());
+
+// Rate limiting
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: process.env.NODE_ENV === 'development' ? 200 : 100,
+    message: { success: false, error: 'Too many requests, please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => process.env.NODE_ENV === 'development'
+});
+app.use('/api/', limiter);
+
+// Body parser
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+
+// Request logging
+if (process.env.NODE_ENV === 'development') {
+    app.use((req, res, next) => {
+        console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+        next();
+    });
 }
 
-// Improved JWT middleware
+// Static file serving with error handling
+try {
+    const publicPath = path.join(__dirname, 'public');
+    if (fs.existsSync(publicPath)) {
+        app.use(express.static(publicPath));
+        console.log('Static files enabled from public directory');
+    } else {
+        console.log('Public directory not found - running in API-only mode');
+    }
+} catch (error) {
+    console.log('ℹ️  Static file serving disabled:', error.message);
+    console.log('ℹ️  This is normal for API-only deployments');
+}
+
+// Helper function for consistent API responses
+function apiResponse(success, data = null, message = null, error = null, meta = {}) {
+    return {
+        success,
+        timestamp: new Date().toISOString(),
+        ...(data !== null && { data }),
+        ...(message && { message }),
+        ...(error && { error }),
+        ...meta
+    };
+}
+
+// JWT authentication middleware
 const authenticateToken = (req, res, next) => {
     try {
         const authHeader = req.headers['authorization'];
         const token = authHeader && authHeader.split(' ')[1];
         
         if (!token) {
-            return res.status(401).json({ 
-                success: false, 
-                error: "Access token is required",
-                message: "Please provide a valid authorization token"
-            });
+            return res.status(401).json(apiResponse(false, null, null, 'Access token required'));
         }
 
         jwt.verify(token, JWT_SECRET, (err, user) => {
             if (err) {
                 console.error('JWT verification error:', err);
-                return res.status(403).json({ 
-                    success: false, 
-                    error: "Invalid or expired token",
-                    message: "Please login again"
-                });
+                return res.status(403).json(apiResponse(false, null, null, 'Invalid or expired token'));
             }
             req.user = user;
             next();
         });
     } catch (error) {
-        console.error('Token authentication error:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: "Authentication error",
-            message: "Internal server error"
-        });
+        console.error('Authentication error:', error);
+        res.status(500).json(apiResponse(false, null, null, 'Authentication error'));
     }
 };
 
-// Test database connection on startup
-async function testConnection() {
-    try {
-        const connection = await createDatabaseConnection();
-        console.log('✓ Connected to MySQL successfully');
-        await connection.ping();
-        await connection.end();
-        return true;
-    } catch (err) {
-        console.error('✗ Error connecting to MySQL:', err);
-        console.log('Please check your database configuration in .env file');
-        console.log('Required variables: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME');
-        return false;
-    }
-}
-
-// Initialize connection test
-testConnection().then(connected => {
-    if (!connected) {
-        console.warn('Starting server without database connection');
-    }
-});
-
-// ✅ Token validation route
-app.get('/api/hr/auth/validate', (req, res) => {
-    const authHeader = req.headers['authorization'];
-    if (!authHeader) {
-        return res.status(401).json({ success: false, message: 'No token provided' });
-    }
-
-    const token = authHeader.split(' ')[1]; // "Bearer <token>"
-    jwt.verify(token, JWT_SECRET, (err, decoded) => {
-        if (err) {
-            return res.status(403).json({ success: false, message: 'Invalid or expired token' });
-        }
-
-        res.json({ success: true, user: decoded });
-    });
-});
-
-
-// HR login with improved error handling
-app.post('/api/hr/login', async (req, res) => {
-    let connection;
-    try {
-        const { email, password } = req.body;
-        
-        if (!email || !password) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Email and password are required' 
-            });
-        }
-        
-        connection = await createDatabaseConnection();
-        
-        // Create hr_users table if it doesn't exist
-        try {
-            await connection.execute('SELECT 1 FROM hr_users LIMIT 1');
-        } catch (tableError) {
-            console.log('Creating hr_users table...');
-            await connection.execute(`
-                CREATE TABLE hr_users (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    email VARCHAR(255) UNIQUE NOT NULL,
-                    password_hash VARCHAR(255) NOT NULL,
-                    role VARCHAR(50) DEFAULT 'HR Manager',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            `);
-            
-            // Create default HR user
-            const defaultPassword = await bcryptjs.hash('Nex63670', 10);
-            await connection.execute(
-                'INSERT INTO hr_users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
-                ['HR Manager', 'hr@nexspherehr.in', defaultPassword, 'HR Manager']
-            );
-            console.log('✓ Created hr_users table with default user');
-        }
-        
-        const [users] = await connection.execute(
-            'SELECT * FROM hr_users WHERE email = ?',
-            [email]
-        );
-
-        if (users.length === 0) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Invalid email or password' 
-            });
-        }
-
-        const user = users[0];
-        const isPasswordValid = await bcryptjs.compare(password, user.password_hash);
-        
-        if (!isPasswordValid) {
-            return res.status(400).json({ 
-                success: false, 
-                error: 'Invalid email or password' 
-            });
-        }
-
-        const token = jwt.sign(
-            { id: user.id, email: user.email },
-            JWT_SECRET,
-            { expiresIn: '24h' }
-        );
-        
-        res.json({
-            success: true,
-            message: 'Login successful',
-            token: token,
-            user: {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                role: user.role
-            },
-        });
-    } catch (error) {
-        console.error('Error during HR login:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'Internal server error',
-            message: error.message 
-        });
-    } finally {
-        if (connection) await connection.end();
-    }
-});
-
-// Dashboard Stats API with better error handling
-app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
-    let connection;
-    try {
-        connection = await createDatabaseConnection();
-        
-        let stats = {
-            employees: { total: 0, active: 0 },
-            employers: { total: 0, active: 0 },
-            payments: { successful: 0, totalRevenue: 0 },
-            emails: { employeeEmails: 0, employerEmails: 0, totalEmails: 0 }
-        };
-        
-        // Check each table and get stats
-        const tables = [
-            {
-                name: 'employees',
-                query: 'SELECT COUNT(*) as total, COUNT(CASE WHEN status = "active" THEN 1 END) as active FROM employees',
-                key: 'employees'
-            },
-            {
-                name: 'employers',
-                query: 'SELECT COUNT(*) as total, COUNT(CASE WHEN status = "active" THEN 1 END) as active FROM employers',
-                key: 'employers'
-            },
-            {
-                name: 'payments',
-                query: 'SELECT COUNT(CASE WHEN payment_status = "paid" THEN 1 END) as successful, COALESCE(SUM(CASE WHEN payment_status = "paid" THEN amount ELSE 0 END), 0) as totalRevenue FROM payments',
-                key: 'payments'
-            }
-        ];
-
-        for (const table of tables) {
-            try {
-                const [result] = await connection.execute(table.query);
-                if (table.key === 'payments') {
-                    stats[table.key] = {
-                        successful: parseInt(result[0].successful) || 0,
-                        totalRevenue: parseFloat(result[0].totalRevenue) || 0
-                    };
-                } else {
-                    stats[table.key] = result[0];
-                }
-            } catch (err) {
-                console.log(`Table ${table.name} may not exist yet:`, err.message);
-            }
-        }
-
-        // Email stats
-        try {
-            const [emailTotals] = await connection.execute(`
-                SELECT
-                    COUNT(*) AS totalEmails,
-                    SUM(CASE WHEN recipient_type = 'employee' AND status = 'sent' THEN 1 ELSE 0 END) AS employeeEmails,
-                    SUM(CASE WHEN recipient_type = 'employer' AND status = 'sent' THEN 1 ELSE 0 END) AS employerEmails
-                FROM email_logs
-                WHERE status IN ('sent','failed')
-            `);
-
-            stats.emails = {
-                employeeEmails: parseInt(emailTotals[0].employeeEmails) || 0,
-                employerEmails: parseInt(emailTotals[0].employerEmails) || 0,
-                totalEmails: parseInt(emailTotals[0].totalEmails) || 0
-            };
-        } catch (err) {
-            console.log('Email logs table may not exist yet:', err.message);
-        }
-
-        res.json({ success: true, stats });
-    } catch (error) {
-        console.error('Error fetching stats:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Internal server error',
-            error: error.message 
-        });
-    } finally {
-        if (connection) await connection.end();
-    }
-});
-
-// Fixed Get Employees API
-app.get('/api/employees', authenticateToken, async (req, res) => {
-    let connection;
-    try {
-        const { status } = req.query;
-        let query = 'SELECT * FROM employees';
-        const params = [];
-        
-        if (status) {
-            query += ' WHERE status = ?';
-            params.push(status);
-        }
-        
-        query += ' ORDER BY id DESC';
-        
-        connection = await createDatabaseConnection();
-        
-        try {
-            const [employees] = await connection.execute(query, params);
-            res.json({
-                success: true,
-                employees: employees,
-                count: employees.length
-            });
-        } catch (tableError) {
-            if (tableError.code === 'ER_NO_SUCH_TABLE') {
-                console.log('Employees table does not exist yet');
-                res.json({
-                    success: true,
-                    employees: [],
-                    count: 0,
-                    message: 'No employees table found'
-                });
-            } else {
-                throw tableError;
-            }
-        }
-        
-    } catch (error) {
-        console.error('Error fetching employees:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error fetching employees',
-            error: error.message 
-        });
-    } finally {
-        if (connection) await connection.end();
-    }
-});
-
-// Fixed Get Employers API
-app.get('/api/employers', authenticateToken, async (req, res) => {
-    let connection;
-    try {
-        const { status } = req.query;
-        let query = 'SELECT * FROM employers';
-        const params = [];
-        
-        if (status) {
-            query += ' WHERE status = ?';
-            params.push(status);
-        }
-        
-        query += ' ORDER BY id DESC';
-        
-        connection = await createDatabaseConnection();
-        
-        try {
-            const [employers] = await connection.execute(query, params);
-            res.json({
-                success: true,
-                employers: employers,
-                count: employers.length
-            });
-        } catch (tableError) {
-            if (tableError.code === 'ER_NO_SUCH_TABLE') {
-                console.log('Employers table does not exist yet');
-                res.json({
-                    success: true,
-                    employers: [],
-                    count: 0,
-                    message: 'No employers table found'
-                });
-            } else {
-                throw tableError;
-            }
-        }
-        
-    } catch (error) {
-        console.error('Error fetching employers:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error fetching employers',
-            error: error.message 
-        });
-    } finally {
-        if (connection) await connection.end();
-    }
-});
-
-// Fixed Get Payments API
-app.get('/api/payments', authenticateToken, async (req, res) => {
-    let connection;
-    try {
-        const { status, service_type } = req.query;
-        let query = 'SELECT * FROM payments';
-        const params = [];
-        const conditions = [];
-        
-        if (status) {
-            conditions.push('payment_status = ?');
-            params.push(status);
-        }
-        
-        if (service_type) {
-            conditions.push('payment_type = ?');
-            params.push(service_type);
-        }
-        
-        if (conditions.length > 0) {
-            query += ' WHERE ' + conditions.join(' AND ');
-        }
-        
-        query += ' ORDER BY id DESC';
-        
-        connection = await createDatabaseConnection();
-        
-        try {
-            const [payments] = await connection.execute(query, params);
-            res.json({
-                success: true,
-                payments: payments,
-                count: payments.length
-            });
-        } catch (tableError) {
-            if (tableError.code === 'ER_NO_SUCH_TABLE') {
-                console.log('Payments table does not exist yet');
-                res.json({
-                    success: true,
-                    payments: [],
-                    count: 0,
-                    message: 'No payments table found'
-                });
-            } else {
-                throw tableError;
-            }
-        }
-        
-    } catch (error) {
-        console.error('Error fetching payments:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error fetching payments',
-            error: error.message 
-        });
-    } finally {
-        if (connection) await connection.end();
-    }
-});
-
-// Fixed email sending function
+// Email sending function
 async function sendEmail(to, subject, html, type = 'general', recipientType = 'other', sentBy = null) {
     if (!emailTransporter) {
         console.warn('Email transporter not configured');
@@ -594,7 +259,7 @@ async function sendEmail(to, subject, html, type = 'general', recipientType = 'o
         
         const result = await emailTransporter.sendMail(mailOptions);
 
-        connection = await createDatabaseConnection();
+        connection = await getDatabaseConnection();
         
         // Create email_logs table if it doesn't exist
         await connection.execute(`
@@ -619,13 +284,13 @@ async function sendEmail(to, subject, html, type = 'general', recipientType = 'o
             [to, recipientType, subject, html, type, sentBy, result.messageId || null]
         );
 
-        console.log('✓ Email sent successfully to:', to);
+        console.log('Email sent successfully to:', to);
         return { success: true, messageId: result.messageId };
     } catch (error) {
-        console.error('✗ Error sending email:', error);
+        console.error('Error sending email:', error);
         
         try {
-            if (!connection) connection = await createDatabaseConnection();
+            if (!connection) connection = await getDatabaseConnection();
             await connection.execute(
                 `INSERT INTO email_logs (recipient_email, recipient_type, subject, body, email_type, status, error_message, sent_by)
                  VALUES (?, ?, ?, ?, ?, 'failed', ?, ?)`,
@@ -637,54 +302,354 @@ async function sendEmail(to, subject, html, type = 'general', recipientType = 'o
         
         return { success: false, error: error.message };
     } finally {
-        if (connection) await connection.end();
+        if (connection) connection.release();
     }
 }
 
-// Fixed Send Email API
+// Routes
+
+// Root route
+app.get('/', (req, res) => {
+    res.json(apiResponse(true, {
+        message: 'Nexsphere Global HR API Server',
+        version: '1.0.0',
+        endpoints: {
+            auth: [
+                'POST /api/hr/login - HR login',
+                'GET /api/hr/auth/validate - Validate token'
+            ],
+            dashboard: [
+                'GET /api/dashboard/stats - Dashboard statistics'
+            ],
+            employees: [
+                'GET /api/employees - Get all employees',
+                'POST /api/register-employee - Register new employee'
+            ],
+            employers: [
+                'GET /api/employers - Get all employers',
+                'POST /api/employer/create-order - Create payment order',
+                'POST /api/employer/register - Complete registration'
+            ],
+            payments: [
+                'GET /api/payments - Get payment records',
+                'POST /api/razorpay/webhook - Payment webhook'
+            ],
+            emails: [
+                'GET /api/emails - Get email logs',
+                'POST /api/send-email - Send email',
+                'GET /api/emails/today-count - Today\'s email count'
+            ],
+            system: [
+                'GET /api/test - Server test',
+                'GET /api/health - Health check'
+            ]
+        }
+    }));
+});
+
+// Token validation route
+app.get('/api/hr/auth/validate', (req, res) => {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader) {
+        return res.status(401).json(apiResponse(false, null, null, 'No token provided'));
+    }
+
+    const token = authHeader.split(' ')[1];
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+        if (err) {
+            return res.status(403).json(apiResponse(false, null, null, 'Invalid or expired token'));
+        }
+        res.json(apiResponse(true, { user: decoded }, 'Token is valid'));
+    });
+});
+
+// HR login
+app.post('/api/hr/login', async (req, res) => {
+    let connection;
+    try {
+        const { email, password } = req.body;
+        
+        if (!email || !password) {
+            return res.status(400).json(apiResponse(false, null, null, 'Email and password are required'));
+        }
+        
+        connection = await getDatabaseConnection();
+        
+        // Create hr_users table if it doesn't exist
+        try {
+            await connection.execute('SELECT 1 FROM hr_users LIMIT 1');
+        } catch (tableError) {
+            console.log('Creating hr_users table...');
+            await connection.execute(`
+                CREATE TABLE hr_users (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    email VARCHAR(255) UNIQUE NOT NULL,
+                    password_hash VARCHAR(255) NOT NULL,
+                    role VARCHAR(50) DEFAULT 'HR Manager',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+            
+            const defaultPassword = await bcryptjs.hash('Nex63670', 10);
+            await connection.execute(
+                'INSERT INTO hr_users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
+                ['HR Manager', 'hr@nexspherehr.in', defaultPassword, 'HR Manager']
+            );
+            console.log('Created hr_users table with default user');
+        }
+        
+        const [users] = await connection.execute(
+            'SELECT * FROM hr_users WHERE email = ?',
+            [email]
+        );
+
+        if (users.length === 0) {
+            return res.status(400).json(apiResponse(false, null, null, 'Invalid email or password'));
+        }
+
+        const user = users[0];
+        const isPasswordValid = await bcryptjs.compare(password, user.password_hash);
+        
+        if (!isPasswordValid) {
+            return res.status(400).json(apiResponse(false, null, null, 'Invalid email or password'));
+        }
+
+        const token = jwt.sign(
+            { id: user.id, email: user.email },
+            JWT_SECRET,
+            { expiresIn: '24h' }
+        );
+        
+        res.json(apiResponse(true, {
+            token,
+            user: {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                role: user.role
+            }
+        }, 'Login successful'));
+    } catch (error) {
+        console.error('Error during HR login:', error);
+        res.status(500).json(apiResponse(false, null, null, 'Internal server error'));
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// Dashboard stats
+app.get('/api/dashboard/stats', authenticateToken, async (req, res) => {
+    let connection;
+    try {
+        connection = await getDatabaseConnection();
+        
+        let stats = {
+            employees: { total: 0, active: 0 },
+            employers: { total: 0, active: 0 },
+            payments: { successful: 0, totalRevenue: 0 },
+            emails: { employeeEmails: 0, employerEmails: 0, totalEmails: 0 }
+        };
+        
+        // Get employee stats
+        try {
+            const [employeeResult] = await connection.execute(
+                'SELECT COUNT(*) as total, COUNT(CASE WHEN status = "active" THEN 1 END) as active FROM employees'
+            );
+            stats.employees = employeeResult[0];
+        } catch (err) {
+            console.log('Employees table may not exist yet:', err.message);
+        }
+        
+        // Get employer stats
+        try {
+            const [employerResult] = await connection.execute(
+                'SELECT COUNT(*) as total, COUNT(CASE WHEN status = "active" THEN 1 END) as active FROM employers'
+            );
+            stats.employers = employerResult[0];
+        } catch (err) {
+            console.log('Employers table may not exist yet:', err.message);
+        }
+        
+        // Get payment stats
+        try {
+            const [paymentResult] = await connection.execute(
+                'SELECT COUNT(CASE WHEN payment_status = "paid" THEN 1 END) as successful, COALESCE(SUM(CASE WHEN payment_status = "paid" THEN amount ELSE 0 END), 0) as totalRevenue FROM payments'
+            );
+            stats.payments = {
+                successful: parseInt(paymentResult[0].successful) || 0,
+                totalRevenue: parseFloat(paymentResult[0].totalRevenue) || 0
+            };
+        } catch (err) {
+            console.log('Payments table may not exist yet:', err.message);
+        }
+
+        // Get email stats
+        try {
+            const [emailResult] = await connection.execute(`
+                SELECT
+                    COUNT(*) AS totalEmails,
+                    SUM(CASE WHEN recipient_type = 'employee' AND status = 'sent' THEN 1 ELSE 0 END) AS employeeEmails,
+                    SUM(CASE WHEN recipient_type = 'employer' AND status = 'sent' THEN 1 ELSE 0 END) AS employerEmails
+                FROM email_logs
+            `);
+            stats.emails = {
+                employeeEmails: parseInt(emailResult[0].employeeEmails) || 0,
+                employerEmails: parseInt(emailResult[0].employerEmails) || 0,
+                totalEmails: parseInt(emailResult[0].totalEmails) || 0
+            };
+        } catch (err) {
+            console.log('Email logs table may not exist yet:', err.message);
+        }
+
+        res.json(apiResponse(true, stats, 'Dashboard stats retrieved successfully'));
+    } catch (error) {
+        console.error('Error fetching stats:', error);
+        res.status(500).json(apiResponse(false, null, null, 'Error fetching dashboard stats'));
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// Get employees
+app.get('/api/employees', authenticateToken, async (req, res) => {
+    let connection;
+    try {
+        const { status } = req.query;
+        let query = 'SELECT * FROM employees';
+        const params = [];
+        
+        if (status) {
+            query += ' WHERE status = ?';
+            params.push(status);
+        }
+        
+        query += ' ORDER BY id DESC';
+        
+        connection = await getDatabaseConnection();
+        
+        const [employees] = await connection.execute(query, params);
+        
+        res.json(apiResponse(true, employees, 'Employees retrieved successfully', null, { count: employees.length }));
+        
+    } catch (error) {
+        console.error('Error fetching employees:', error);
+        
+        if (error.code === 'ER_NO_SUCH_TABLE') {
+            res.json(apiResponse(true, [], 'No employees found - table will be created on first registration', null, { count: 0 }));
+        } else {
+            res.status(500).json(apiResponse(false, null, null, 'Error fetching employees'));
+        }
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// Get employers
+app.get('/api/employers', authenticateToken, async (req, res) => {
+    let connection;
+    try {
+        const { status } = req.query;
+        let query = 'SELECT * FROM employers';
+        const params = [];
+        
+        if (status) {
+            query += ' WHERE status = ?';
+            params.push(status);
+        }
+        
+        query += ' ORDER BY id DESC';
+        
+        connection = await getDatabaseConnection();
+        
+        const [employers] = await connection.execute(query, params);
+        
+        res.json(apiResponse(true, employers, 'Employers retrieved successfully', null, { count: employers.length }));
+        
+    } catch (error) {
+        console.error('Error fetching employers:', error);
+        
+        if (error.code === 'ER_NO_SUCH_TABLE') {
+            res.json(apiResponse(true, [], 'No employers found - table will be created on first registration', null, { count: 0 }));
+        } else {
+            res.status(500).json(apiResponse(false, null, null, 'Error fetching employers'));
+        }
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// Get payments
+app.get('/api/payments', authenticateToken, async (req, res) => {
+    let connection;
+    try {
+        const { status, service_type } = req.query;
+        let query = 'SELECT * FROM payments';
+        const params = [];
+        const conditions = [];
+        
+        if (status) {
+            conditions.push('payment_status = ?');
+            params.push(status);
+        }
+        
+        if (service_type) {
+            conditions.push('payment_type = ?');
+            params.push(service_type);
+        }
+        
+        if (conditions.length > 0) {
+            query += ' WHERE ' + conditions.join(' AND ');
+        }
+        
+        query += ' ORDER BY id DESC';
+        
+        connection = await getDatabaseConnection();
+        
+        const [payments] = await connection.execute(query, params);
+        
+        res.json(apiResponse(true, payments, 'Payments retrieved successfully', null, { count: payments.length }));
+        
+    } catch (error) {
+        console.error('Error fetching payments:', error);
+        
+        if (error.code === 'ER_NO_SUCH_TABLE') {
+            res.json(apiResponse(true, [], 'No payments found - table will be created on first payment', null, { count: 0 }));
+        } else {
+            res.status(500).json(apiResponse(false, null, null, 'Error fetching payments'));
+        }
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
+// Send email
 app.post('/api/send-email', authenticateToken, async (req, res) => {
     try {
         const { to, subject, body, recipientType = 'other', emailType = 'general' } = req.body;
         
         if (!to || !subject || !body) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'All fields (to, subject, body) are required' 
-            });
+            return res.status(400).json(apiResponse(false, null, null, 'All fields (to, subject, body) are required'));
         }
         
         if (!to.includes('@')) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Invalid email address format' 
-            });
+            return res.status(400).json(apiResponse(false, null, null, 'Invalid email address format'));
         }
 
         const result = await sendEmail(to, subject, body, emailType, recipientType, req.user?.id || null);
 
         if (result.success) {
-            res.json({ 
-                success: true, 
-                message: 'Email sent successfully', 
-                messageId: result.messageId 
-            });
+            res.json(apiResponse(true, { messageId: result.messageId }, 'Email sent successfully'));
         } else {
-            res.status(500).json({ 
-                success: false, 
-                message: 'Failed to send email: ' + result.error 
-            });
+            res.status(500).json(apiResponse(false, null, null, `Failed to send email: ${result.error}`));
         }
     } catch (error) {
         console.error('Error in send email API:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Internal server error',
-            error: error.message 
-        });
+        res.status(500).json(apiResponse(false, null, null, 'Internal server error'));
     }
 });
 
-// Fixed Get Email Logs API
+// Get email logs
 app.get('/api/emails', authenticateToken, async (req, res) => {
     let connection;
     try {
@@ -699,80 +664,51 @@ app.get('/api/emails', authenticateToken, async (req, res) => {
         
         query += ' ORDER BY sent_at DESC LIMIT 100';
         
-        connection = await createDatabaseConnection();
+        connection = await getDatabaseConnection();
         
-        try {
-            const [emails] = await connection.execute(query, params);
-            res.json({
-                success: true,
-                emails: emails,
-                count: emails.length
-            });
-        } catch (tableError) {
-            if (tableError.code === 'ER_NO_SUCH_TABLE') {
-                res.json({
-                    success: true,
-                    emails: [],
-                    count: 0,
-                    message: 'No email logs table found'
-                });
-            } else {
-                throw tableError;
-            }
-        }
+        const [emails] = await connection.execute(query, params);
+        
+        res.json(apiResponse(true, emails, 'Email logs retrieved successfully', null, { count: emails.length }));
         
     } catch (error) {
         console.error('Error fetching emails:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error fetching emails',
-            error: error.message 
-        });
+        
+        if (error.code === 'ER_NO_SUCH_TABLE') {
+            res.json(apiResponse(true, [], 'No email logs found - table will be created on first email', null, { count: 0 }));
+        } else {
+            res.status(500).json(apiResponse(false, null, null, 'Error fetching email logs'));
+        }
     } finally {
-        if (connection) await connection.end();
+        if (connection) connection.release();
     }
 });
 
-// Fixed Get Today's Email Count API
+// Get today's email count
 app.get('/api/emails/today-count', authenticateToken, async (req, res) => {
     let connection;
     try {
-        connection = await createDatabaseConnection();
+        connection = await getDatabaseConnection();
         
-        try {
-            const [result] = await connection.execute(
-                'SELECT COUNT(*) as count FROM email_logs WHERE DATE(sent_at) = CURDATE() AND status = "sent"'
-            );
-            
-            res.json({
-                success: true,
-                count: parseInt(result[0].count) || 0
-            });
-        } catch (tableError) {
-            if (tableError.code === 'ER_NO_SUCH_TABLE') {
-                res.json({
-                    success: true,
-                    count: 0,
-                    message: 'No email logs table found'
-                });
-            } else {
-                throw tableError;
-            }
-        }
+        const [result] = await connection.execute(
+            'SELECT COUNT(*) as count FROM email_logs WHERE DATE(sent_at) = CURDATE() AND status = "sent"'
+        );
+        
+        res.json(apiResponse(true, { count: parseInt(result[0].count) || 0 }, 'Today\'s email count retrieved'));
         
     } catch (error) {
         console.error('Error fetching today email count:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error fetching email count',
-            error: error.message 
-        });
+        
+        if (error.code === 'ER_NO_SUCH_TABLE') {
+            res.json(apiResponse(true, { count: 0 }, 'No email logs found'));
+        } else {
+            res.status(500).json(apiResponse(false, null, null, 'Error fetching email count'));
+        }
     } finally {
-        if (connection) await connection.end();
+        if (connection) connection.release();
     }
 });
 
-// Fixed Employee Registration API
+// Employee registration
 app.post("/api/register-employee", async (req, res) => {
     let connection;
     try {
@@ -783,31 +719,22 @@ app.post("/api/register-employee", async (req, res) => {
         const missingFields = Object.entries(requiredFields).filter(([key, value]) => !value?.toString().trim());
         
         if (missingFields.length > 0) {
-            return res.status(400).json({ 
-                success: false, 
-                message: `Missing required fields: ${missingFields.map(([key]) => key).join(', ')}` 
-            });
+            return res.status(400).json(apiResponse(false, null, null, `Missing required fields: ${missingFields.map(([key]) => key).join(', ')}`));
         }
-        
+
         // Validate email format
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Invalid email format' 
-            });
+            return res.status(400).json(apiResponse(false, null, null, 'Invalid email format'));
         }
         
         // Validate phone number
         const phoneRegex = /^(\+91|91)?[6-9]\d{9}$/;
         if (!phoneRegex.test(contact_no.replace(/\s+/g, ''))) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Invalid phone number format' 
-            });
+            return res.status(400).json(apiResponse(false, null, null, 'Invalid phone number format'));
         }
         
-        connection = await createDatabaseConnection();
+        connection = await getDatabaseConnection();
         
         // Create employees table if it doesn't exist
         await connection.execute(`
@@ -833,7 +760,7 @@ app.post("/api/register-employee", async (req, res) => {
             [name, contact_no, alternate_no || null, email, joining_company, joining_date, position]
         );
         
-        console.log('✓ Employee registered with ID:', result.insertId);
+        console.log('Employee registered with ID:', result.insertId);
 
         // Send confirmation email
         const emailResult = await sendEmail(
@@ -864,142 +791,20 @@ app.post("/api/register-employee", async (req, res) => {
             'employee'
         );
 
-        res.json({
-            success: true,
-            message: 'Employee registered successfully',
+        res.json(apiResponse(true, {
             employeeId: result.insertId,
             emailSent: emailResult.success
-        });
-
-    } catch (error) {
-        console.error('Error registering employee:', error);
-        if (error.code === 'ER_DUP_ENTRY') {
-            res.status(400).json({ 
-                success: false, 
-                message: 'Employee with this email already exists' 
-            });
-        } else {
-            res.status(500).json({ 
-                success: false, 
-                message: 'Error registering employee',
-                error: error.message 
-            });
-        }
-    } finally {
-        if (connection) await connection.end();
-    }
-});
-
-// Fixed Create Razorpay order for employer registration
-app.post('/api/employer/create-order', async (req, res) => {
-    let connection;
-    try {
-        const { name, company_name, business_email, business_number, location, designation, company_size } = req.body;
-        
-        // Input validation
-        const requiredFields = { name, company_name, business_email, business_number, location, designation, company_size };
-        const missingFields = Object.entries(requiredFields).filter(([key, value]) => !value?.toString().trim());
-        
-        if (missingFields.length > 0) {
-            return res.status(400).json({ 
-                success: false, 
-                message: `Missing required fields: ${missingFields.map(([key]) => key).join(', ')}` 
-            });
-        }
-
-        // Validate email format
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(business_email)) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Invalid email format' 
-            });
-        }
-
-        // Check Razorpay configuration
-        if (!razorpayInstance) {
-            return res.status(500).json({ 
-                success: false, 
-                message: 'Payment gateway not configured' 
-            });
-        }
-        
-        // Create unique receipt ID
-        const receiptId = `receipt_emp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        
-        const options = {
-            amount: 999 * 100, // Amount in paise
-            currency: "INR",
-            receipt: receiptId,
-            notes: {
-                company_name: company_name,
-                business_email: business_email,
-                purpose: "Employer Registration Fee"
-            }
-        };
-        
-        connection = await createDatabaseConnection();
-        
-        // Create payments table if it doesn't exist
-        await connection.execute(`
-            CREATE TABLE IF NOT EXISTS payments (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                razorpay_order_id VARCHAR(255),
-                razorpay_payment_id VARCHAR(255),
-                razorpay_signature VARCHAR(255),
-                amount DECIMAL(10,2) NOT NULL,
-                currency VARCHAR(10) DEFAULT 'INR',
-                payment_status VARCHAR(50) DEFAULT 'created',
-                payment_method VARCHAR(50) NULL,
-                payment_date TIMESTAMP NULL,
-                name VARCHAR(255),
-                company_name VARCHAR(255),
-                business_email VARCHAR(255),
-                business_number VARCHAR(20),
-                location VARCHAR(255),
-                designation VARCHAR(255),
-                company_size INT,
-                email VARCHAR(255),
-                payment_type VARCHAR(50),
-                employer_id INT,
-                employee_id INT,
-                receipt_id VARCHAR(255),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            )
-        `);
-        
-        const order = await razorpayInstance.orders.create(options);
-        console.log('✓ Razorpay order created:', order.id);
-        
-        await connection.execute(
-            `INSERT INTO payments 
-             (razorpay_order_id, amount, currency, payment_status, name, company_name, business_email, business_number, location, designation, company_size, payment_type, receipt_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [order.id, 999, 'INR', 'created', name, company_name, business_email, business_number, location, designation, parseInt(company_size), 'employer_registration', receiptId]
-        );
-
-        res.json({ 
-            success: true, 
-            orderId: order.id,
-            amount: order.amount,
-            currency: order.currency,
-            key: process.env.RAZORPAY_KEY_ID
-        });
+        }, 'Employee registered successfully'));
 
     } catch (error) {
         console.error('Order creation failed:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Failed to create payment order',
-            error: error.message 
-        });
+        res.status(500).json(apiResponse(false, null, null, 'Failed to create payment order'));
     } finally {
-        if (connection) await connection.end();
+        if (connection) connection.release();
     }
 });
 
-// Fixed Employer Registration after payment verification
+// Employer registration after payment verification
 app.post('/api/employer/register', async (req, res) => {
     let connection;
     try {
@@ -1018,18 +823,12 @@ app.post('/api/employer/register', async (req, res) => {
 
         // Input validation
         if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Payment verification data is missing' 
-            });
+            return res.status(400).json(apiResponse(false, null, null, 'Payment verification data is missing'));
         }
 
         // Verify payment signature
         if (!process.env.RAZORPAY_KEY_SECRET) {
-            return res.status(500).json({ 
-                success: false, 
-                message: 'Payment verification not configured' 
-            });
+            return res.status(500).json(apiResponse(false, null, null, 'Payment verification not configured'));
         }
 
         const generated_signature = crypto
@@ -1038,13 +837,10 @@ app.post('/api/employer/register', async (req, res) => {
             .digest('hex');
 
         if (generated_signature !== razorpay_signature) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Invalid payment signature' 
-            });
+            return res.status(400).json(apiResponse(false, null, null, 'Invalid payment signature'));
         }
 
-        connection = await createDatabaseConnection();
+        connection = await getDatabaseConnection();
 
         // Create employers table if it doesn't exist
         await connection.execute(`
@@ -1071,10 +867,7 @@ app.post('/api/employer/register', async (req, res) => {
         );
 
         if (existingPayment.length === 0) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Payment record not found' 
-            });
+            return res.status(400).json(apiResponse(false, null, null, 'Payment record not found'));
         }
 
         const paymentId = existingPayment[0].id;
@@ -1105,7 +898,7 @@ app.post('/api/employer/register', async (req, res) => {
             [result.insertId, paymentId]
         );
 
-        console.log('✓ Employer registered with ID:', result.insertId);
+        console.log('Employer registered with ID:', result.insertId);
 
         // Send confirmation email
         const emailResult = await sendEmail(
@@ -1144,34 +937,25 @@ app.post('/api/employer/register', async (req, res) => {
             'employer'
         );
 
-        res.json({
-            success: true,
-            message: 'Employer registered successfully',
+        res.json(apiResponse(true, {
             employerId: result.insertId,
             paymentId: razorpay_payment_id,
             emailSent: emailResult.success
-        });
+        }, 'Employer registered successfully'));
         
     } catch (error) {
         console.error('Error registering employer:', error);
         if (error.code === 'ER_DUP_ENTRY') {
-            res.status(400).json({ 
-                success: false, 
-                message: 'Employer with this email already exists' 
-            });
+            res.status(400).json(apiResponse(false, null, null, 'Employer with this email already exists'));
         } else {
-            res.status(500).json({ 
-                success: false, 
-                message: 'Error registering employer',
-                error: error.message 
-            });
+            res.status(500).json(apiResponse(false, null, null, 'Error registering employer'));
         }
     } finally {
-        if (connection) await connection.end();
+        if (connection) connection.release();
     }
 });
 
-// Fixed Webhook handler
+// Razorpay webhook handler
 app.post('/api/razorpay/webhook', async (req, res) => {
     let connection;
     try {
@@ -1191,7 +975,7 @@ app.post('/api/razorpay/webhook', async (req, res) => {
             const payment = req.body.payload.payment.entity;
 
             if (event === 'payment.captured') {
-                connection = await createDatabaseConnection();
+                connection = await getDatabaseConnection();
                 await connection.execute(
                     `UPDATE payments SET 
                      payment_status = 'paid', 
@@ -1202,7 +986,7 @@ app.post('/api/razorpay/webhook', async (req, res) => {
                     [payment.method, payment.id]
                 );
                 
-                console.log('✓ Payment captured webhook processed:', payment.id);
+                console.log('Payment captured webhook processed:', payment.id);
             }
         } else {
             console.warn('Invalid webhook signature');
@@ -1214,60 +998,11 @@ app.post('/api/razorpay/webhook', async (req, res) => {
         console.error('Webhook error:', error);
         res.status(500).json({ error: 'Webhook processing failed' });
     } finally {
-        if (connection) await connection.end();
+        if (connection) connection.release();
     }
 });
 
-// Manual payment verification endpoint
-app.post('/api/employer/manual-payment', async (req, res) => {
-    let connection;
-    try {
-        const paymentData = req.body;
-        
-        // Validate required fields
-        const requiredFields = ['name', 'company_name', 'business_email', 'business_number', 'location', 'designation', 'company_size'];
-        const missingFields = requiredFields.filter(field => !paymentData[field]);
-        
-        if (missingFields.length > 0) {
-            return res.status(400).json({
-                success: false,
-                message: `Missing required fields: ${missingFields.join(', ')}`
-            });
-        }
-
-        connection = await createDatabaseConnection();
-        
-        // Generate a manual payment ID
-        const manualPaymentId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        
-        // Create payment record for manual verification
-        const [paymentResult] = await connection.execute(
-            `INSERT INTO payments 
-             (amount, currency, payment_status, name, company_name, business_email, business_number, location, designation, company_size, payment_type, razorpay_payment_id, payment_method)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [999, 'INR', 'pending_verification', paymentData.name, paymentData.company_name, paymentData.business_email, paymentData.business_number, paymentData.location, paymentData.designation, parseInt(paymentData.company_size), 'employer_registration', manualPaymentId, paymentData.payment_method || 'manual']
-        );
-        
-        res.json({
-            success: true,
-            message: 'Payment submitted for verification',
-            paymentId: manualPaymentId,
-            note: 'Your registration will be activated within 24 hours after payment verification'
-        });
-        
-    } catch (error) {
-        console.error('Manual payment processing error:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Error processing manual payment',
-            error: error.message 
-        });
-    } finally {
-        if (connection) await connection.end();
-    }
-});
-
-// Test endpoint with enhanced diagnostics
+// Test endpoint
 app.get('/api/test', async (req, res) => {
     const diagnostics = {
         success: true,
@@ -1285,9 +1020,9 @@ app.get('/api/test', async (req, res) => {
 
     // Test database connection
     try {
-        const connection = await createDatabaseConnection();
+        const connection = await getDatabaseConnection();
         await connection.ping();
-        await connection.end();
+        connection.release();
         diagnostics.services.database = true;
     } catch (error) {
         console.log('Database test failed:', error.message);
@@ -1302,7 +1037,7 @@ app.get('/api/test', async (req, res) => {
     res.json(diagnostics);
 });
 
-// Health check endpoint with detailed status
+// Health check endpoint
 app.get('/api/health', async (req, res) => {
     const health = {
         success: true,
@@ -1313,9 +1048,9 @@ app.get('/api/health', async (req, res) => {
 
     try {
         // Test database connection
-        const connection = await createDatabaseConnection();
+        const connection = await getDatabaseConnection();
         await connection.execute('SELECT 1 as test');
-        await connection.end();
+        connection.release();
         health.services.database = 'connected';
     } catch (error) {
         health.services.database = 'disconnected';
@@ -1331,110 +1066,81 @@ app.get('/api/health', async (req, res) => {
     res.status(statusCode).json(health);
 });
 
-// Root route
-app.get('/', (req, res) => {
-    const indexPath = path.join(__dirname, 'public', 'index.html');
-    const registerPath = path.join(__dirname, 'public', 'register.html');
-    
-    // Check which file exists and serve it
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-    } else if (fs.existsSync(registerPath)) {
-        res.sendFile(registerPath);
-    } else {
-        res.json({
-            message: 'Nexsphere Global HR API Server',
-            status: 'running',
-            endpoints: [
-                'GET /api/test - Server test',
-                'GET /api/health - Health check',
-                'POST /api/hr/login - HR login',
-                'POST /api/register-employee - Employee registration',
-                'POST /api/employer/create-order - Create payment order',
-                'POST /api/employer/register - Complete employer registration'
-            ]
-        });
-    }
-});
-
 // API 404 handler
 app.use('/api/*', (req, res) => {
-    res.status(404).json({ 
-        success: false, 
-        message: `API endpoint not found: ${req.method} ${req.path}`,
-        available_endpoints: [
-            'GET /api/test',
-            'GET /api/health', 
-            'POST /api/hr/login',
-            'GET /api/dashboard/stats',
-            'GET /api/employees',
-            'GET /api/employers',
-            'GET /api/payments',
-            'POST /api/send-email',
-            'GET /api/emails',
-            'GET /api/emails/today-count',
-            'POST /api/register-employee',
-            'POST /api/employer/create-order',
-            'POST /api/employer/register',
-            'POST /api/employer/manual-payment',
-            'POST /api/razorpay/webhook'
-        ]
-    });
+    res.status(404).json(apiResponse(false, null, null, `API endpoint not found: ${req.method} ${req.path}`));
 });
 
-// Global error handler with better error responses
+// Global error handler
 app.use((error, req, res, next) => {
     console.error('Global error handler:', error);
     
-    // Handle specific error types
     if (error.type === 'entity.parse.failed') {
-        return res.status(400).json({
-            success: false,
-            message: 'Invalid JSON in request body',
-            error: 'Malformed JSON'
-        });
+        return res.status(400).json(apiResponse(false, null, null, 'Invalid JSON in request body'));
     }
     
     if (error.code === 'EBADCSRFTOKEN') {
-        return res.status(403).json({
-            success: false,
-            message: 'Invalid CSRF token'
-        });
+        return res.status(403).json(apiResponse(false, null, null, 'Invalid CSRF token'));
     }
 
-    res.status(500).json({ 
-        success: false, 
-        message: 'Internal server error',
-        error: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong',
-        timestamp: new Date().toISOString()
-    });
+    res.status(500).json(apiResponse(false, null, null, 
+        process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    ));
 });
 
-// Graceful shutdown handling
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully');
-    process.exit(0);
-});
+// Server startup function
+async function startServer() {
+    try {
+        // Initialize database first
+        const dbInitialized = await initializeDatabase();
+        if (!dbInitialized) {
+            console.log('⚠️  Starting server without database connection');
+            console.log('⚠️  Database features will be limited until connection is established');
+        }
+        
+        // Only start server locally, not on Vercel
+        if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+            const server = app.listen(port, '0.0.0.0', () => {
+                console.log(`Server is running on port ${port}`);
+                console.log(`Access the application at: http://localhost:${port}`);
+                console.log(`API base URL: http://localhost:${port}/api/`);
+                console.log('\nRequired .env variables:');
+                console.log('   - DB_HOST, DB_USER, DB_PASSWORD, DB_NAME');
+                console.log('   - RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET');
+                console.log('   - EMAIL_USER, EMAIL_PASSWORD');
+                console.log('   - JWT_SECRET');
+                console.log(`\nTest your server: curl http://localhost:${port}/api/test`);
+            });
+            
+            // Graceful shutdown
+            process.on('SIGTERM', async () => {
+                console.log('SIGTERM received, shutting down gracefully');
+                server.close(() => {
+                    if (connectionPool) {
+                        connectionPool.end();
+                    }
+                    process.exit(0);
+                });
+            });
 
-process.on('SIGINT', () => {
-    console.log('SIGINT received, shutting down gracefully');
-    process.exit(0);
-});
-
-// Only start server locally, not on Vercel
-if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
-    app.listen(port, '0.0.0.0', () => {
-        console.log(`✓ Server is running on port ${port}`);
-        console.log(`✓ Access the application at: http://localhost:${port}`);
-        console.log(`✓ API base URL: http://localhost:${port}/api/`);
-        console.log('\n📋 Required .env variables:');
-        console.log('   - DB_HOST, DB_USER, DB_PASSWORD, DB_NAME');
-        console.log('   - RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET');
-        console.log('   - EMAIL_USER, EMAIL_PASSWORD');
-        console.log('   - JWT_SECRET');
-        console.log('\n🔧 Test your server: curl http://localhost:' + port + '/api/test');
-    });
+            process.on('SIGINT', async () => {
+                console.log('SIGINT received, shutting down gracefully');
+                server.close(() => {
+                    if (connectionPool) {
+                        connectionPool.end();
+                    }
+                    process.exit(0);
+                });
+            });
+        }
+    } catch (error) {
+        console.error('Failed to start server:', error);
+        process.exit(1);
+    }
 }
+
+// Start the server
+startServer();
 
 // Export for Vercel
 module.exports = app;

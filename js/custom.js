@@ -794,14 +794,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
   if (employeeForm) {
     employeeForm.addEventListener('submit', handleEmployeeFormSubmit);
+    console.log('Employee form initialized successfully');
   } else {
-    console.warn('Employee form not found - make sure your HTML has an element with id="employeeForm"');
+    console.log('Employee form not found - this is normal if you\'re not on the registration page');
   }
 
   if (employerForm) {
     employerForm.addEventListener('submit', handleEmployerFormSubmit);
+    console.log('Employer form initialized successfully');
   } else {
-    console.warn('Employer form not found - make sure your HTML has an element with id="employerForm"');
+    console.log('Employer form not found - this is normal if you\'re not on the registration page');
   }
 
   console.log('Application initialization complete');
