@@ -761,6 +761,52 @@ nav[aria-label="breadcrumb"] {
   border-radius: var(--border-radius-medium);
 }
 
+
+.about-info {
+  background-color:var(--primary-color);  
+  color: #000000;              /* black text */
+  padding: 6px 12px;           /* reduced padding */
+  font-size: 10px;             /* smaller text */
+  border-radius: 15px;         /* smaller radius */
+  display: inline-block;       
+  text-align: center;          
+  position: absolute;
+  bottom: 0;                   /* positioned at bottom edge */
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 130px;            /* smaller width */
+  box-shadow: none;            /* remove shadow for clean look */
+  border: 2px solid var(--secondary-color);   /* black border like in image */
+}
+
+/* .about-info h4 {
+  font-size: 12px;            
+  margin: 0;                   
+  font-weight: 700;            
+  line-height: 1.1;            
+  color: #000000;              
+}
+
+.about-info p {
+  font-size: 9px;             
+  margin: 0;                   
+  opacity: 1;                 
+  line-height: 1.1;            
+  color: #000000;             
+} */
+
+.about-image-wrap {
+  position: relative;
+  background: linear-gradient(180deg, #f0f4f8 0%, #d6e7f0 50%, #a8c8d8 100%);
+  border-radius: 20px;
+  overflow: hidden;
+  height: 450px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 0;
+}
+
 .about-image {
   display: block;
   object-fit: cover;
@@ -769,6 +815,34 @@ nav[aria-label="breadcrumb"] {
   width: 100%;  
   -webkit-transform: translateZ(0);
   transform: translateZ(0);
+}
+
+.custom-border-radius-start {
+  border-radius: 20px 0 0 20px;
+}
+
+.about-section .row {
+  align-items: center;
+}
+
+.about-section .col-lg-3,
+.about-section .col-lg-6 {
+  display: flex;
+  align-items: center;
+  height: 450px;
+}
+
+.custom-text-block {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.instagram-block {
+  height: 450px;
+  display: flex;
+  align-items: center;
 }
 
 .custom-border-radius-start {
@@ -1605,21 +1679,36 @@ nav[aria-label="breadcrumb"] {
   background-color: #dee0e2;
   padding: 10px;
   text-align: center;
-  border-radius: 10px ;
+  border-radius: 10px;
 }
 
- .card-body ul {
-  max-height: 0;
-  overflow: hidden;
-  opacity: 0;
-  transition: max-height 0.4s ease, opacity 0.4s ease;
+.card-body ul {
+  max-height: none;
+  overflow: visible;
+  opacity: 1;
+  display: block;
+  margin: 20px 0;
+  padding: 0;
+  list-style: none;
 }
+
+.card-body ul li {
+  padding: 8px 0;
+  font-size: 20px;
+  color: #333;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.card-body ul li:last-child {
+  border-bottom: none;
+}
+
 
 /* When hovering the card, show the list */
-.card:hover .card-body ul {
+/* .card:hover .card-body ul {
    max-height: 500px; 
    opacity: 1;
-}
+} */
 
 /* =============================
    Company Cards Grid (Fixed)

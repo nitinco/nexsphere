@@ -804,6 +804,80 @@ app.post("/api/register-employee", async (req, res) => {
     }
 });
 
+// Create payment order for employer registration
+app.post('/api/employer/create-order', async (req, res) => {
+    let connection;
+    try {
+        const { name, company_name, business_email, business_number, location, designation, company_size } = req.body;
+        
+        // Input validation
+        const requiredFields = { name, company_name, business_email, business_number, location, designation, company_size };
+        const missingFields = Object.entries(requiredFields).filter(([key, value]) => !value?.toString().trim());
+        
+        if (missingFields.length > 0) {
+            return res.status(400).json(apiResponse(false, null, null, `Missing required fields: ${missingFields.map(([key]) => key).join(', ')}`));
+        }
+
+        // Check if Razorpay is configured
+        if (!razorpayInstance) {
+            return res.status(500).json(apiResponse(false, null, null, 'Payment gateway not configured'));
+        }
+
+        connection = await getDatabaseConnection();
+        
+        // Create payments table if it doesn't exist
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS payments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                razorpay_order_id VARCHAR(255) UNIQUE NOT NULL,
+                razorpay_payment_id VARCHAR(255),
+                razorpay_signature VARCHAR(255),
+                amount DECIMAL(10,2) NOT NULL,
+                currency VARCHAR(10) DEFAULT 'INR',
+                payment_status ENUM('pending','paid','failed') DEFAULT 'pending',
+                payment_type VARCHAR(50) DEFAULT 'employer_registration',
+                payment_method VARCHAR(50),
+                employer_id INT DEFAULT NULL,
+                payment_date TIMESTAMP NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Create Razorpay order
+        const orderOptions = {
+            amount: 99900, // Amount in paise (₹999)
+            currency: 'INR',
+            receipt: `emp_reg_${Date.now()}`,
+            payment_capture: 1
+        };
+
+        const razorpayOrder = await razorpayInstance.orders.create(orderOptions);
+        
+        // Save order to database
+        await connection.execute(
+            `INSERT INTO payments (razorpay_order_id, amount, currency, payment_type, payment_status) 
+             VALUES (?, ?, ?, 'employer_registration', 'pending')`,
+            [razorpayOrder.id, 999.00, 'INR']
+        );
+
+        console.log('Payment order created:', razorpayOrder.id);
+
+        res.json(apiResponse(true, {
+            orderId: razorpayOrder.id,
+            amount: razorpayOrder.amount,
+            currency: razorpayOrder.currency,
+            key: process.env.RAZORPAY_KEY_ID
+        }, 'Payment order created successfully'));
+
+    } catch (error) {
+        console.error('Order creation failed:', error);
+        res.status(500).json(apiResponse(false, null, null, 'Failed to create payment order'));
+    } finally {
+        if (connection) connection.release();
+    }
+});
+
 // Employer registration after payment verification
 app.post('/api/employer/register', async (req, res) => {
     let connection;

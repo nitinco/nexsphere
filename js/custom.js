@@ -92,7 +92,7 @@
 })(window.jQuery);
 
 // API Configuration
-const API_BASE_URL = 'https://api.nexsphereglobal.com'; 
+const API_BASE_URL = 'http://localhost:3000'; 
 let employerFormData = {};
 
 // Feature flag to control API calls
@@ -436,11 +436,9 @@ async function handleEmployerFormSubmit(e) {
     submitBtn.textContent = 'Processing...';
     showLoading('Creating payment order...');
 
-    let orderData; // Declare orderData in the main scope
-
     try {
       // Create payment order
-      orderData = await makeAPICall(`${API_BASE_URL}/api/employer/create-order`, {
+      const result = await makeAPICall(`${API_BASE_URL}/api/employer/create-order`, {
         method: 'POST',
         body: JSON.stringify(employerFormData)
       });
@@ -448,10 +446,17 @@ async function handleEmployerFormSubmit(e) {
       hideLoading(); // Hide loading after successful order creation
       
       // Handle success
-      console.log('Order created successfully:', orderData);
+      console.log('Order created successfully:', result);
       
-      // Initialize Razorpay payment
-      initiateRazorpayPayment(orderData);
+      // Extract orderData from the API response
+      if (result.success && result.data) {
+        const orderData = result.data; // This contains { orderId, amount, currency, key }
+        
+        // Initialize Razorpay payment
+        initiateRazorpayPayment(orderData);
+      } else {
+        throw new Error(result.error || 'Failed to create order');
+      }
       
     } catch (error) {
       console.error('Failed to create order:', error);
@@ -492,6 +497,20 @@ function initiateRazorpayPayment(orderData) {
   // Check if Razorpay is loaded
   if (typeof Razorpay === 'undefined') {
     showMessage('Payment gateway not loaded. Please refresh the page and try again.', 'error');
+    return;
+  }
+
+  // Check if key is provided
+  if (!orderData.key) {
+    console.error('Razorpay key is missing from order data:', orderData);
+    showMessage('Payment configuration error. Please contact support.', 'error');
+    
+    // Re-enable the submit button
+    const submitBtn = document.getElementById('employerSubmitBtn');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Register & Pay ₹999';
+    }
     return;
   }
 
@@ -546,6 +565,13 @@ function initiateRazorpayPayment(orderData) {
   } catch (error) {
     console.error('Error opening Razorpay:', error);
     showMessage('Failed to open payment gateway: ' + error.message, 'error');
+    
+    // Re-enable the submit button
+    const submitBtn = document.getElementById('employerSubmitBtn');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Register & Pay ₹999';
+    }
   }
 }
 
